@@ -33,7 +33,12 @@ import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.util.ResourceSet;
 import org.apache.tomcat.util.compat.JreCompat;
 
-public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
+public abstract class AbstractArchiveResourceSet extends AbstractResourceSet
+    implements Resource {
 
     private URL baseUrl;
     private String baseUrlString;
@@ -42,6 +47,7 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
     protected HashMap<String,JarEntry> archiveEntries = null;
     protected final Object archiveLock = new Object();
     private long archiveUseCount = 0;
+    private boolean inCheckpoint = false;
 
 
     protected final void setBaseUrl(URL baseUrl) {
@@ -62,6 +68,9 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
         return baseUrlString;
     }
 
+    AbstractArchiveResourceSet() {
+        Core.getGlobalContext().register(this);
+    }
 
     @Override
     public final String[] list(String path) {
@@ -304,6 +313,12 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
 
     protected JarFile openJarFile() throws IOException {
         synchronized (archiveLock) {
+            while (inCheckpoint) {
+                try {
+                    archiveLock.wait();
+                } catch (InterruptedException ignore) {
+                }
+            }
             if (archive == null) {
                 archive = JreCompat.getInstance().jarFileNewInstance(getBase());
             }
@@ -315,6 +330,9 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
     protected void closeJarFile() {
         synchronized (archiveLock) {
             archiveUseCount--;
+            if (inCheckpoint && archiveUseCount == 0) {
+                archiveLock.notifyAll();
+            }
         }
     }
 
@@ -330,6 +348,25 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet {
                 archive = null;
                 archiveEntries = null;
             }
+        }
+    }
+
+    @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) throws Exception {
+        synchronized (archiveLock) {
+            inCheckpoint = true;
+            while (0 < archiveUseCount) {
+                archiveLock.wait();
+            }
+            gc();
+        }
+    }
+
+    @Override
+    public void afterRestore(Context<? extends Resource> context) throws Exception {
+        synchronized (archiveLock) {
+            inCheckpoint = false;
+            archiveLock.notifyAll();
         }
     }
 }

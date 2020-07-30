@@ -245,6 +245,8 @@ public class Catalina {
                 // NOOP
             } else if (args[i].equals("stop")) {
                 // NOOP
+            } else if (args[i].equals("checkpoint")) {
+                // NOOP
             } else {
                 usage();
                 return false;

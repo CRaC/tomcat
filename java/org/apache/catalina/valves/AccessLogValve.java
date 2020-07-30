@@ -38,6 +38,10 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.B2CConverter;
 
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
 
 /**
  * This is a concrete implementation of {@link AbstractAccessLogValve} that
@@ -60,13 +64,14 @@ import org.apache.tomcat.util.buf.B2CConverter;
  * the existing log file to somewhere else and start writing a new log file.
  * </p>
  */
-public class AccessLogValve extends AbstractAccessLogValve {
+public class AccessLogValve extends AbstractAccessLogValve implements Resource {
 
     private static final Log log = LogFactory.getLog(AccessLogValve.class);
 
     //------------------------------------------------------ Constructor
     public AccessLogValve() {
         super();
+        Core.getGlobalContext().register(this);
     }
 
     // ----------------------------------------------------- Instance Variables
@@ -701,4 +706,16 @@ public class AccessLogValve extends AbstractAccessLogValve {
         super.stopInternal();
         close(false);
     }
+
+    @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) throws Exception {
+        close(false);
+    }
+
+
+    @Override
+    public void afterRestore(Context<? extends Resource> context) throws Exception {
+        open();
+    }
+
 }
