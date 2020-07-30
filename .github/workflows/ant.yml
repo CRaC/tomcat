@@ -32,3 +32,12 @@ jobs:
       if: github.ref == 'refs/tags/release-crac-embed'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - run: mvn deploy:deploy-file
+          -Dfile=output/jdbc-pool/tomcat-jdbc.jar
+          -Dsources=output/jdbc-pool/tomcat-jdbc-src.jar
+          -DpomFile=modules/jdbc-pool/pom.xml
+          -DrepositoryId=github
+          -Durl=https://maven.pkg.github.com/${GITHUB_REPOSITORY}
+      if: github.ref == 'refs/tags/release-crac-jdbc'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
