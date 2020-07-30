@@ -31,6 +31,11 @@
   </licenses>
   <dependencies>
     <dependency>
+      <groupId>org.crac</groupId>
+      <artifactId>crac</artifactId>
+      <version>999-SNAPSHOT</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.tomcat</groupId>
       <artifactId>tomcat-annotations-api</artifactId>
       <version>@MAVEN.DEPLOY.VERSION@</version>

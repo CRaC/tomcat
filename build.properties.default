@@ -89,7 +89,7 @@ compile.debug=true
 # Do not pass -deprecation (-Xlint:deprecation) flag to javac
 compile.deprecation=false
 
-base-apache.loc.1=http://www.apache.org/dyn/closer.lua?action=download&filename=
+base-apache.loc.1=https://archive.apache.org/dist # FIXME
 base-apache.loc.2=https://archive.apache.org/dist
 base-commons.loc.1=${base-apache.loc.1}/commons
 base-commons.loc.2=${base-apache.loc.2}/commons
@@ -275,3 +275,10 @@ findbugs.home=${base.path}/findbugs-${findbugs.version}
 findbugs.lib=${findbugs.home}/lib
 findbugs.jar=${findbugs.lib}/findbugs-ant.jar
 findbugs.loc=${base-sf.loc}/project/findbugs/findbugs/${findbugs.version}/findbugs-${findbugs.version}.tar.gz
+
+# ----- crac -----
+crac.version=999-SNAPSHOT
+crac.checksum.enabled=false
+crac.home=${base.path}/crac-${crac.version}
+crac.jar=${crac.home}/crac-${crac.version}.jar
+crac.loc=file://${user.home}/.m2/repository/org/crac/crac/${crac.version}/crac-${crac.version}.jar
