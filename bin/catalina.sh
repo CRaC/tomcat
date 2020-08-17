@@ -620,7 +620,7 @@ elif [ "$1" = "checkpoint" ]; then
   shift
 
   CRPATH=$CATALINA_HOME/cr
-  CRARG="\"-Zcheckpoint:$CRPATH\""
+  CRARG="\"-XX:CRaCCheckpointTo=$CRPATH\""
 
   if [ "$1" = "-security" ] ; then
     if [ $have_tty -eq 1 ]; then
@@ -651,7 +651,7 @@ elif [ "$1" = "restore" ]; then
 
   CRPATH=$CATALINA_HOME/cr
 
-  eval exec "\"$_RUNJAVA\"" -Zrestore:$CRPATH
+  eval exec "\"$_RUNJAVA\"" -XX:CRaCRestoreFrom=$CRPATH
 
 elif [ "$1" = "version" ] ; then
 
