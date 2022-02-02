@@ -16,30 +16,7 @@ jobs:
       with:
         java-version: 1.8
     - run: mvn -B dependency:get
-        -Dartifact=org.crac:crac:999-SNAPSHOT
-        -DremoteRepositories=github::default::https://maven.pkg.github.com/org-crac/org.crac
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        -Dartifact=io.github.crac:org-crac:0.1.0
     - run: ant
     - run: ant embed-jars
-    - run: |
-        for i in tomcat-embed-core tomcat-embed-el tomcat-embed-jasper tomcat-embed-websocket; do
-          sed "s/@MAVEN.DEPLOY.VERSION@/999-SNAPSHOT/" < res/maven/$i.pom > $i.pom
-          mvn -B deploy:deploy-file \
-            -Dfile=output/embed/$i.jar \
-            -DpomFile=$i.pom \
-            -DrepositoryId=github \
-            -Durl=https://maven.pkg.github.com/${GITHUB_REPOSITORY}
-        done
-      if: github.ref == 'refs/tags/release-crac-embed'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - run: mvn deploy:deploy-file
-          -Dfile=output/jdbc-pool/tomcat-jdbc.jar
-          -Dsources=output/jdbc-pool/tomcat-jdbc-src.jar
-          -DpomFile=modules/jdbc-pool/pom.xml
-          -DrepositoryId=github
-          -Durl=https://maven.pkg.github.com/${GITHUB_REPOSITORY}
-      if: github.ref == 'refs/tags/release-crac-jdbc'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - run: ant embed-sources

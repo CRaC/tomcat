@@ -320,8 +320,8 @@ jsign.jar=${jsign.home}/jsign-${jsign.version}-java7.jar
 jsign.loc=https://github.com/ebourg/jsign/releases/download/${jsign.version}/jsign-${jsign.version}-java7.jar
 
 # ----- crac -----
-crac.version=999-SNAPSHOT
+crac.version=0.1.0
 crac.checksum.enabled=false
 crac.home=${base.path}/crac-${crac.version}
 crac.jar=${crac.home}/crac-${crac.version}.jar
-crac.loc=file://${user.home}/.m2/repository/org/crac/crac/${crac.version}/crac-${crac.version}.jar
+crac.loc=file://${user.home}/.m2/repository/io/github/crac/org-crac/${crac.version}/org-crac-${crac.version}.jar
