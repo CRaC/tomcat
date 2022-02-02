@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
 import java.io.File;
@@ -41,11 +40,7 @@ public final class Library {
             try {
                 System.loadLibrary(NAMES[i]);
                 loaded = true;
-            } catch (ThreadDeath t) {
-                throw t;
-            } catch (VirtualMachineError t) {
-                // Don't use a Java 7 multiple exception catch so we can keep
-                // the JNI code identical between Tomcat 6/7/8/9
+            } catch (ThreadDeath | VirtualMachineError t) {
                 throw t;
             } catch (Throwable t) {
                 String name = System.mapLibraryName(NAMES[i]);
@@ -174,10 +169,11 @@ public final class Library {
      */
     public static synchronized boolean initialize(String libraryName) throws Exception {
         if (_instance == null) {
-            if (libraryName == null)
+            if (libraryName == null) {
                 _instance = new Library();
-            else
+            } else {
                 _instance = new Library(libraryName);
+            }
             TCN_MAJOR_VERSION  = version(0x01);
             TCN_MINOR_VERSION  = version(0x02);
             TCN_PATCH_VERSION  = version(0x03);
@@ -221,7 +217,7 @@ public final class Library {
                                                aprVersionString() + ")");
             }
             if (!APR_HAS_THREADS) {
-                throw new UnsatisfiedLinkError("Missing APR_HAS_THREADS");
+                throw new UnsatisfiedLinkError("Missing threading support from APR");
             }
         }
         return initialize();

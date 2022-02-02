@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 import java.beans.FeatureDescriptor;
@@ -75,7 +74,7 @@ public class MapELResolver extends ELResolver {
 
             if (this.readOnly) {
                 throw new PropertyNotWritableException(Util.message(context,
-                        "resolverNotWriteable", base.getClass().getName()));
+                        "resolverNotWritable", base.getClass().getName()));
             }
 
             try {

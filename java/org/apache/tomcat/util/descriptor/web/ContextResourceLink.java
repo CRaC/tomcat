@@ -42,7 +42,7 @@ public class ContextResourceLink extends ResourceBase {
     private String factory = null;
 
     public String getGlobal() {
-        return (this.global);
+        return this.global;
     }
 
     public void setGlobal(String global) {
@@ -76,8 +76,8 @@ public class ContextResourceLink extends ResourceBase {
             sb.append(", global=");
             sb.append(getGlobal());
         }
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 

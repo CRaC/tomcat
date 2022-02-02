@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 
@@ -23,10 +21,8 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 
-import org.apache.catalina.Globals;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
-import org.apache.tomcat.util.ExceptionUtils;
 
 
 /**
@@ -88,7 +84,7 @@ public final class Tool {
      * The pathname of our installation base directory.
      */
     private static final String catalinaHome =
-            System.getProperty(Globals.CATALINA_HOME_PROP);
+            System.getProperty(Constants.CATALINA_HOME_PROP);
 
 
     /**
@@ -122,7 +118,7 @@ public final class Tool {
 
         // Verify that "catalina.home" was passed.
         if (catalinaHome == null) {
-            log.error("Must set '" + Globals.CATALINA_HOME_PROP + "' system property");
+            log.error("Must set '" + Constants.CATALINA_HOME_PROP + "' system property");
             System.exit(1);
         }
 
@@ -133,16 +129,17 @@ public final class Tool {
                 usage();
                 System.exit(1);
             }
-            if ("-ant".equals(args[index]))
+            if ("-ant".equals(args[index])) {
                 ant = true;
-            else if ("-common".equals(args[index]))
+            } else if ("-common".equals(args[index])) {
                 common = true;
-            else if ("-server".equals(args[index]))
+            } else if ("-server".equals(args[index])) {
                 server = true;
-            else if ("-shared".equals(args[index]))
+            } else if ("-shared".equals(args[index])) {
                 shared = true;
-            else
+            } else {
                 break;
+            }
             index++;
         }
         if (index > args.length) {
@@ -151,8 +148,9 @@ public final class Tool {
         }
 
         // Set "ant.home" if requested
-        if (ant)
+        if (ant) {
             System.setProperty("ant.home", catalinaHome);
+        }
 
         // Construct the class loader we will be using
         ClassLoader classLoader = null;
@@ -185,7 +183,7 @@ public final class Tool {
                  packed.toArray(new File[0]),
                  null);
         } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
+            Bootstrap.handleThrowable(t);
             log.error("Class loader creation threw exception", t);
             System.exit(1);
         }
@@ -195,11 +193,12 @@ public final class Tool {
         Class<?> clazz = null;
         String className = args[index++];
         try {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Loading application class " + className);
+            }
             clazz = classLoader.loadClass(className);
         } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
+            Bootstrap.handleThrowable(t);
             log.error("Exception creating instance of " + className, t);
             System.exit(1);
         }
@@ -208,28 +207,30 @@ public final class Tool {
         String params[] = new String[args.length - index];
         System.arraycopy(args, index, params, 0, params.length);
         try {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Identifying main() method");
+            }
             String methodName = "main";
             Class<?> paramTypes[] = new Class[1];
             paramTypes[0] = params.getClass();
             method = clazz.getMethod(methodName, paramTypes);
         } catch (Throwable t) {
-            ExceptionUtils.handleThrowable(t);
+            Bootstrap.handleThrowable(t);
             log.error("Exception locating main() method", t);
             System.exit(1);
         }
 
         // Invoke the main method of the application class
         try {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Calling main() method");
+            }
             Object paramValues[] = new Object[1];
             paramValues[0] = params;
             method.invoke(null, paramValues);
         } catch (Throwable t) {
-            t = ExceptionUtils.unwrapInvocationTargetException(t);
-            ExceptionUtils.handleThrowable(t);
+            t = Bootstrap.unwrapInvocationTargetException(t);
+            Bootstrap.handleThrowable(t);
             log.error("Exception calling main() method", t);
             System.exit(1);
         }

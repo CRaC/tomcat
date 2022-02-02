@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.util;
 
 
@@ -68,12 +66,15 @@ public class ServerInfo {
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
         }
-        if (info == null)
+        if (info == null) {
             info = "Apache Tomcat 8.5.x-dev";
-        if (built == null)
+        }
+        if (built == null) {
             built = "unknown";
-        if (number == null)
+        }
+        if (number == null) {
             number = "8.5.x";
+        }
 
         serverInfo = info;
         serverBuilt = built;
@@ -88,27 +89,21 @@ public class ServerInfo {
      * @return the server identification for this version of Tomcat.
      */
     public static String getServerInfo() {
-
-        return (serverInfo);
-
+        return serverInfo;
     }
 
     /**
      * @return the server built time for this version of Tomcat.
      */
     public static String getServerBuilt() {
-
-        return (serverBuilt);
-
+        return serverBuilt;
     }
 
     /**
      * @return the server's version number.
      */
     public static String getServerNumber() {
-
-        return (serverNumber);
-
+        return serverNumber;
     }
 
     public static void main(String args[]) {

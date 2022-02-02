@@ -89,25 +89,32 @@ public abstract class SSLUtilBase implements SSLUtil {
 
         // Calculate the enabled protocols
         Set<String> configuredProtocols = sslHostConfig.getProtocols();
-        if (!isTls13Available() &&
+        Set<String> implementedProtocols = getImplementedProtocols();
+        // If TLSv1.3 is not implemented and not explicitly requested we can
+        // ignore it. It is included in the defaults so it may be configured.
+        if (!implementedProtocols.contains(Constants.SSL_PROTO_TLSv1_3) &&
                 !sslHostConfig.isExplicitlyRequestedProtocol(Constants.SSL_PROTO_TLSv1_3)) {
-            // TLS 1.3 not implemented and not explicitly requested so ignore it
-            // if present
             configuredProtocols.remove(Constants.SSL_PROTO_TLSv1_3);
         }
-        Set<String> implementedProtocols = getImplementedProtocols();
+        // Newer JREs are dropping support for SSLv2Hello. If it is not
+        // implemented and not explicitly requested we can ignore it. It is
+        // included in the defaults so it may be configured.
+        if (!implementedProtocols.contains(Constants.SSL_PROTO_SSLv2Hello) &&
+                !sslHostConfig.isExplicitlyRequestedProtocol(Constants.SSL_PROTO_SSLv2Hello)) {
+            configuredProtocols.remove(Constants.SSL_PROTO_SSLv2Hello);
+        }
+
         List<String> enabledProtocols =
                 getEnabled("protocols", getLog(), warnTls13, configuredProtocols, implementedProtocols);
         if (enabledProtocols.contains("SSLv3")) {
-            log.warn(sm.getString("jsse.ssl3"));
+            log.warn(sm.getString("sslUtilBase.ssl3"));
         }
-        this.enabledProtocols = enabledProtocols.toArray(new String[enabledProtocols.size()]);
+        this.enabledProtocols = enabledProtocols.toArray(new String[0]);
 
         if (enabledProtocols.contains(Constants.SSL_PROTO_TLSv1_3) &&
-                (sslHostConfig.getCertificateVerification() == CertificateVerification.OPTIONAL ||
-                        sslHostConfig.getCertificateVerification() == CertificateVerification.OPTIONAL) &&
+                sslHostConfig.getCertificateVerification() == CertificateVerification.OPTIONAL &&
                 !isTls13RenegAuthAvailable() && warnTls13) {
-            log.warn(sm.getString("jsse.tls13.auth"));
+            log.warn(sm.getString("sslUtilBase.tls13.auth"));
         }
 
         // Calculate the enabled ciphers
@@ -115,7 +122,7 @@ public abstract class SSLUtilBase implements SSLUtil {
         Set<String> implementedCiphers = getImplementedCiphers();
         List<String> enabledCiphers =
                 getEnabled("ciphers", getLog(), false, configuredCiphers, implementedCiphers);
-        this.enabledCiphers = enabledCiphers.toArray(new String[enabledCiphers.size()]);
+        this.enabledCiphers = enabledCiphers.toArray(new String[0]);
     }
 
 
@@ -147,8 +154,7 @@ public abstract class SSLUtilBase implements SSLUtil {
             }
             if (log.isDebugEnabled() || warnOnSkip) {
                 if (enabled.size() != configured.size()) {
-                    List<T> skipped = new ArrayList<>();
-                    skipped.addAll(configured);
+                    List<T> skipped = new ArrayList<>(configured);
                     skipped.removeAll(enabled);
                     String msg = sm.getString("sslUtilBase.skipped", name, skipped);
                     if (warnOnSkip) {
@@ -185,8 +191,8 @@ public abstract class SSLUtilBase implements SSLUtil {
                 // Some key store types (e.g. hardware) expect the InputStream
                 // to be null
                 if(!("PKCS11".equalsIgnoreCase(type) ||
-                        "".equalsIgnoreCase(path)) ||
-                        "NONE".equalsIgnoreCase(path)) {
+                        path.isEmpty() ||
+                        "NONE".equalsIgnoreCase(path))) {
                     istream = ConfigFileLoader.getInputStream(path);
                 }
 
@@ -194,8 +200,7 @@ public abstract class SSLUtilBase implements SSLUtil {
                 // Unfortunately, some key stores behave differently with null
                 // and "".
                 // JKS key stores treat null and "" interchangeably.
-                // PKCS12 key stores (Java 7 onwards) don't return the cert if
-                // null is used.
+                // PKCS12 key stores don't return the cert if null is used.
                 // Key stores that do not use passwords expect null
                 // Therefore:
                 // - generally use null if pass is null or ""
@@ -215,7 +220,7 @@ public abstract class SSLUtilBase implements SSLUtil {
             // Re-throw. Caller will catch and log as required
             throw ioe;
         } catch(Exception ex) {
-            String msg = sm.getString("jsse.keystore_load_failed", type, path,
+            String msg = sm.getString("sslUtilBase.keystore_load_failed", type, path,
                     ex.getMessage());
             log.error(msg, ex);
             throw new IOException(msg);
@@ -249,10 +254,13 @@ public abstract class SSLUtilBase implements SSLUtil {
 
     @Override
     public void configureSessionContext(SSLSessionContext sslSessionContext) {
-        if (sslHostConfig.getSessionCacheSize() > 0) {
+        // <0 - don't set anything - use the implementation default
+        if (sslHostConfig.getSessionCacheSize() >= 0) {
             sslSessionContext.setSessionCacheSize(sslHostConfig.getSessionCacheSize());
         }
-        if (sslHostConfig.getSessionTimeout() > 0) {
+
+        // <0 - don't set anything - use the implementation default
+        if (sslHostConfig.getSessionTimeout() >= 0) {
             sslSessionContext.setSessionTimeout(sslHostConfig.getSessionTimeout());
         }
     }
@@ -286,9 +294,19 @@ public abstract class SSLUtilBase implements SSLUtil {
 
         char[] keyPassArray = keyPass.toCharArray();
 
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
+        if (kmf.getProvider().getInfo().indexOf("FIPS") != -1) {
+            // FIPS doesn't like ANY wrapping nor key manipulation.
+            if (keyAlias != null) {
+                log.warn(sm.getString("sslUtilBase.aliasIgnored", keyAlias));
+            }
+            kmf.init(ksUsed, keyPassArray);
+            return kmf.getKeyManagers();
+        }
+
         if (ks == null) {
             if (certificate.getCertificateFile() == null) {
-                throw new IOException(sm.getString("jsse.noCertFile"));
+                throw new IOException(sm.getString("sslUtilBase.noCertFile"));
             }
 
             PEMFile privateKeyFile = new PEMFile(
@@ -311,14 +329,14 @@ public abstract class SSLUtilBase implements SSLUtil {
             ksUsed = KeyStore.getInstance("JKS");
             ksUsed.load(null,  null);
             ksUsed.setKeyEntry(keyAlias, privateKeyFile.getPrivateKey(), keyPass.toCharArray(),
-                    chain.toArray(new Certificate[chain.size()]));
+                    chain.toArray(new Certificate[0]));
         } else {
             if (keyAlias != null && !ks.isKeyEntry(keyAlias)) {
-                throw new IOException(sm.getString("jsse.alias_no_key_entry", keyAlias));
+                throw new IOException(sm.getString("sslUtilBase.alias_no_key_entry", keyAlias));
             } else if (keyAlias == null) {
                 Enumeration<String> aliases = ks.aliases();
                 if (!aliases.hasMoreElements()) {
-                    throw new IOException(sm.getString("jsse.noKeys"));
+                    throw new IOException(sm.getString("sslUtilBase.noKeys"));
                 }
                 while (aliases.hasMoreElements() && keyAlias == null) {
                     keyAlias = aliases.nextElement();
@@ -327,7 +345,7 @@ public abstract class SSLUtilBase implements SSLUtil {
                     }
                 }
                 if (keyAlias == null) {
-                    throw new IOException(sm.getString("jsse.alias_no_key_entry", (Object) null));
+                    throw new IOException(sm.getString("sslUtilBase.alias_no_key_entry", (Object) null));
                 }
             }
 
@@ -349,7 +367,6 @@ public abstract class SSLUtilBase implements SSLUtil {
         }
 
 
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
         kmf.init(ksUsed, keyPassArray);
 
         KeyManager[] kms = kmf.getKeyManagers();
@@ -393,7 +410,7 @@ public abstract class SSLUtilBase implements SSLUtil {
              Class<?> clazz = classLoader.loadClass(className);
              if(!(TrustManager.class.isAssignableFrom(clazz))){
                 throw new InstantiationException(sm.getString(
-                        "jsse.invalidTrustManagerClassName", className));
+                        "sslUtilBase.invalidTrustManagerClassName", className));
              }
              Object trustManagerObject = clazz.getConstructor().newInstance();
              TrustManager trustManager = (TrustManager) trustManagerObject;
@@ -420,11 +437,11 @@ public abstract class SSLUtilBase implements SSLUtil {
                 tmf.init(trustStore);
                 tms = tmf.getTrustManagers();
                 if (crlf != null && crlf.length() > 0) {
-                    throw new CRLException(sm.getString("jsseUtil.noCrlSupport", algorithm));
+                    throw new CRLException(sm.getString("sslUtilBase.noCrlSupport", algorithm));
                 }
                 // Only warn if the attribute has been explicitly configured
                 if (sslHostConfig.isCertificateVerificationDepthConfigured()) {
-                    log.warn(sm.getString("jsseUtil.noVerificationDepth", algorithm));
+                    log.warn(sm.getString("sslUtilBase.noVerificationDepth", algorithm));
                 }
             }
         }
@@ -445,7 +462,7 @@ public abstract class SSLUtilBase implements SSLUtil {
                         try {
                             ((X509Certificate) cert).checkValidity(now);
                         } catch (CertificateExpiredException | CertificateNotYetValidException e) {
-                            String msg = sm.getString("jsseUtil.trustedCertNotValid", alias,
+                            String msg = sm.getString("sslUtilBase.trustedCertNotValid", alias,
                                     ((X509Certificate) cert).getSubjectDN(), e.getMessage());
                             if (log.isDebugEnabled()) {
                                 log.debug(msg, e);
@@ -455,7 +472,7 @@ public abstract class SSLUtilBase implements SSLUtil {
                         }
                     } else {
                         if (log.isDebugEnabled()) {
-                            log.debug(sm.getString("jsseUtil.trustedCertNotChecked", alias));
+                            log.debug(sm.getString("sslUtilBase.trustedCertNotChecked", alias));
                         }
                     }
                 }
@@ -477,7 +494,7 @@ public abstract class SSLUtilBase implements SSLUtil {
      * @return The parameters including the CRLs and TrustStore.
      * @throws Exception An error occurred
      */
-    private CertPathParameters getParameters(String crlf, KeyStore trustStore,
+    protected CertPathParameters getParameters(String crlf, KeyStore trustStore,
             boolean revocationEnabled) throws Exception {
 
         PKIXBuilderParameters xparams =
@@ -504,7 +521,7 @@ public abstract class SSLUtilBase implements SSLUtil {
      * @throws CRLException CRL error
      * @throws CertificateException Error processing certificate
      */
-    private Collection<? extends CRL> getCRLs(String crlf)
+    protected Collection<? extends CRL> getCRLs(String crlf)
         throws IOException, CRLException, CertificateException {
 
         Collection<? extends CRL> crls = null;
@@ -527,7 +544,6 @@ public abstract class SSLUtilBase implements SSLUtil {
     protected abstract Set<String> getImplementedProtocols();
     protected abstract Set<String> getImplementedCiphers();
     protected abstract Log getLog();
-    protected abstract boolean isTls13Available();
     protected abstract boolean isTls13RenegAuthAvailable();
     protected abstract SSLContext createSSLContextInternal(List<String> negotiableProtocols) throws Exception;
 }

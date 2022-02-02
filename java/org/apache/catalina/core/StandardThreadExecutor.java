@@ -14,16 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.catalina.Executor;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.apache.catalina.util.LifecycleMBeanBase;
+import org.apache.tomcat.util.res.StringManager;
 import org.apache.tomcat.util.threads.ResizableExecutor;
 import org.apache.tomcat.util.threads.TaskQueue;
 import org.apache.tomcat.util.threads.TaskThreadFactory;
@@ -31,6 +30,8 @@ import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
 public class StandardThreadExecutor extends LifecycleMBeanBase
         implements Executor, ResizableExecutor {
+
+    protected static final StringManager sm = StringManager.getManager(StandardThreadExecutor.class);
 
     // ---------------------------------------------- Properties
     /**
@@ -140,7 +141,9 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
     protected void stopInternal() throws LifecycleException {
 
         setState(LifecycleState.STOPPING);
-        if ( executor != null ) executor.shutdownNow();
+        if (executor != null) {
+            executor.shutdownNow();
+        }
         executor = null;
         taskqueue = null;
     }
@@ -153,25 +156,25 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
 
 
     @Override
+    @Deprecated
     public void execute(Runnable command, long timeout, TimeUnit unit) {
-        if ( executor != null ) {
+        if (executor != null) {
             executor.execute(command,timeout,unit);
         } else {
-            throw new IllegalStateException("StandardThreadExecutor not started.");
+            throw new IllegalStateException(sm.getString("standardThreadExecutor.notStarted"));
         }
     }
 
 
     @Override
     public void execute(Runnable command) {
-        if ( executor != null ) {
-            try {
-                executor.execute(command);
-            } catch (RejectedExecutionException rx) {
-                //there could have been contention around the queue
-                if ( !( (TaskQueue) executor.getQueue()).force(command) ) throw new RejectedExecutionException("Work queue full.");
-            }
-        } else throw new IllegalStateException("StandardThreadPool not started.");
+        if (executor != null) {
+            // Note any RejectedExecutionException due to the use of TaskQueue
+            // will be handled by the o.a.t.u.threads.ThreadPoolExecutor
+            executor.execute(command);
+        } else {
+            throw new IllegalStateException(sm.getString("standardThreadExecutor.notStarted"));
+        }
     }
 
     public void contextStopping() {
@@ -305,8 +308,9 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
 
     @Override
     public boolean resizePool(int corePoolSize, int maximumPoolSize) {
-        if (executor == null)
+        if (executor == null) {
             return false;
+        }
 
         executor.setCorePoolSize(corePoolSize);
         executor.setMaximumPoolSize(maximumPoolSize);
@@ -328,8 +332,6 @@ public class StandardThreadExecutor extends LifecycleMBeanBase
 
     @Override
     protected String getObjectNameKeyProperties() {
-        StringBuilder name = new StringBuilder("type=Executor,name=");
-        name.append(getName());
-        return name.toString();
+        return "type=Executor,name=" + getName();
     }
 }

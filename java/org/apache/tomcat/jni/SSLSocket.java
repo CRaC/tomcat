@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.jni;
 
 /** SSL Socket
@@ -24,7 +23,7 @@ package org.apache.tomcat.jni;
 public class SSLSocket {
 
     /**
-     * Attach APR socket on a SSL connection.
+     * Attach APR socket on an SSL connection.
      * @param ctx SSLContext to use.
      * @param sock APR Socket that already did physical connect or accept.
      * @return APR_STATUS code.
@@ -34,14 +33,14 @@ public class SSLSocket {
         throws Exception;
 
     /**
-     * Do a SSL handshake.
+     * Do an SSL handshake.
      * @param thesocket The socket to use
      * @return the handshake status
      */
     public static native int handshake(long thesocket);
 
     /**
-     * Do a SSL renegotiation.
+     * Do an SSL renegotiation.
      * SSL supports per-directory re-configuration of SSL parameters.
      * This is implemented by performing an SSL renegotiation of the
      * re-configured parameters after the request is read, but before the

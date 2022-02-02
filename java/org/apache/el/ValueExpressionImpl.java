@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el;
 
 import java.io.Externalizable;
@@ -240,7 +239,7 @@ public final class ValueExpressionImpl extends ValueExpression implements
             ClassNotFoundException {
         this.expr = in.readUTF();
         String type = in.readUTF();
-        if (!"".equals(type)) {
+        if (!type.isEmpty()) {
             this.expectedType = ReflectionUtil.forName(type);
         }
         this.fnMapper = (FunctionMapper) in.readObject();

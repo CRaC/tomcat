@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha.backend;
 
 import java.io.BufferedReader;
@@ -30,6 +28,7 @@ import java.util.StringTokenizer;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /*
  * Sender to proxies using multicast socket.
@@ -38,6 +37,7 @@ public class TcpSender
     implements Sender {
 
     private static final Log log = LogFactory.getLog(HeartbeatListener.class);
+    private static final StringManager sm = StringManager.getManager(TcpSender.class);
 
     HeartbeatListener config = null;
 
@@ -65,14 +65,15 @@ public class TcpSender
         while (tok.hasMoreTokens()) {
             String token = tok.nextToken().trim();
             int pos = token.indexOf(':');
-            if (pos <=0)
-                throw new Exception("bad ProxyList");
+            if (pos <= 0) {
+                throw new Exception(sm.getString("tcpSender.invalidProxyList"));
+            }
             proxies[i] = new Proxy();
             proxies[i].port = Integer.parseInt(token.substring(pos + 1));
             try {
                  proxies[i].address = InetAddress.getByName(token.substring(0, pos));
             } catch (Exception e) {
-                throw new Exception("bad ProxyList");
+                throw new Exception(sm.getString("tcpSender.invalidProxyList"));
             }
             i++;
         }
@@ -85,7 +86,7 @@ public class TcpSender
     @Override
     public int send(String mess) throws Exception {
         if (connections == null) {
-            log.error("Not initialized");
+            log.error(sm.getString("tcpSender.notInitialized"));
             return -1;
         }
         String requestLine = "POST " + config.getProxyURL() + " HTTP/1.0";
@@ -101,17 +102,20 @@ public class TcpSender
                         connections[i].bind(addrs);
                         addrs = new InetSocketAddress(proxies[i].address, proxies[i].port);
                         connections[i].connect(addrs);
-                    } else
+                    } else {
                         connections[i] = new Socket(proxies[i].address, proxies[i].port);
+                    }
                     connectionReaders[i] = new BufferedReader(new InputStreamReader(connections[i].getInputStream()));
                     connectionWriters[i] = new BufferedWriter(new OutputStreamWriter(connections[i].getOutputStream()));
                 } catch (Exception ex) {
-                    log.error("Unable to connect to proxy: " + ex);
+                    log.error(sm.getString("tcpSender.connectionFailed"), ex);
                     close(i);
                 }
             }
             if (connections[i] == null)
+             {
                 continue; // try next proxy in the list
+            }
             BufferedWriter writer = connectionWriters[i];
             try {
                 writer.write(requestLine);
@@ -124,23 +128,25 @@ public class TcpSender
                 writer.write("\r\n");
                 writer.flush();
             } catch (Exception ex) {
-                log.error("Unable to send collected load information to proxy: " + ex);
+                log.error(sm.getString("tcpSender.sendFailed"), ex);
                 close(i);
             }
             if (connections[i] == null)
+             {
                 continue; // try next proxy in the list
+            }
 
             /* Read httpd answer */
             String responseStatus = connectionReaders[i].readLine();
             if (responseStatus == null) {
-                log.error("Unable to read response from proxy");
+                log.error(sm.getString("tcpSender.responseError"));
                 close(i);
                 continue;
             } else {
                 responseStatus = responseStatus.substring(responseStatus.indexOf(' ') + 1, responseStatus.indexOf(' ', responseStatus.indexOf(' ') + 1));
                 int status = Integer.parseInt(responseStatus);
                 if (status != 200) {
-                    log.error("Status is " + status);
+                    log.error(sm.getString("tcpSender.responseErrorCode", Integer.valueOf(status)));
                     close(i);
                     continue;
                 }
@@ -148,7 +154,7 @@ public class TcpSender
                 // read all the headers.
                 String header = connectionReaders[i].readLine();
                 int contentLength = 0;
-                while (!"".equals(header)) {
+                while (header != null && !header.isEmpty()) {
                     int colon = header.indexOf(':');
                     String headerName = header.substring(0, colon).trim();
                     String headerValue = header.substring(colon + 1).trim();
@@ -163,7 +169,7 @@ public class TcpSender
                         int thisTime = (contentLength > buf.length) ? buf.length : contentLength;
                         int n = connectionReaders[i].read(buf, 0, thisTime);
                         if (n <= 0) {
-                            log.error("Read content failed");
+                            log.error(sm.getString("tcpSender.readError"));
                             close(i);
                             break;
                         } else {

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.util.HashMap;
@@ -108,8 +107,9 @@ public class StoreRegistry {
      * @return The description
      */
     public StoreDescription findDescription(String id) {
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("search descriptor " + id);
+        }
         StoreDescription desc = descriptors.get(id);
         if (desc == null) {
             Class<?> aClass = null;
@@ -128,12 +128,14 @@ public class StoreRegistry {
                 }
             }
         }
-        if (log.isDebugEnabled())
-            if (desc != null)
+        if (log.isDebugEnabled()) {
+            if (desc != null) {
                 log.debug("find descriptor " + id + "#" + desc.getTag() + "#"
                         + desc.getStoreFactoryClass());
-            else
+            } else {
                 log.debug(("Can't find descriptor for key " + id));
+            }
+        }
         return desc;
     }
 
@@ -155,10 +157,11 @@ public class StoreRegistry {
      */
     public IStoreFactory findStoreFactory(String aClassName) {
         StoreDescription desc = findDescription(aClassName);
-        if (desc != null)
+        if (desc != null) {
             return desc.getStoreFactory();
-        else
+        } else {
             return null;
+        }
 
     }
 
@@ -179,12 +182,14 @@ public class StoreRegistry {
      */
     public void registerDescription(StoreDescription desc) {
         String key = desc.getId();
-        if (key == null || "".equals(key))
+        if (key == null || key.isEmpty()) {
             key = desc.getTagClass();
+        }
         descriptors.put(key, desc);
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("register store descriptor " + key + "#" + desc.getTag()
                     + "#" + desc.getTagClass());
+        }
     }
 
     /**
@@ -195,8 +200,9 @@ public class StoreRegistry {
      */
     public StoreDescription unregisterDescription(StoreDescription desc) {
         String key = desc.getId();
-        if (key == null || "".equals(key))
+        if (key == null || "".equals(key)) {
             key = desc.getTagClass();
+        }
         return descriptors.remove(key);
     }
 

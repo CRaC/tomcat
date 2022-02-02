@@ -119,7 +119,7 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet
                 }
             }
         }
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
     @Override
@@ -241,7 +241,7 @@ public abstract class AbstractArchiveResourceSet extends AbstractResourceSet
 
         if (path.startsWith(webAppMount)) {
             String pathInJar = getInternalPath() + path.substring(
-                    webAppMount.length(), path.length());
+                    webAppMount.length());
             // Always strip off the leading '/' to get the JAR path
             if (pathInJar.length() > 0 && pathInJar.charAt(0) == '/') {
                 pathInJar = pathInJar.substring(1);

@@ -32,6 +32,7 @@ import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.tribes.io.ReplicationStream;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.collections.SynchronizedStack;
 
 public abstract class ClusterManagerBase extends ManagerBase implements ClusterManager {
 
@@ -56,6 +57,14 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
      * send all actions of session attributes.
      */
     private boolean recordAllActions = false;
+
+    private SynchronizedStack<DeltaRequest> deltaRequestPool = new SynchronizedStack<>();
+
+
+    protected SynchronizedStack<DeltaRequest> getDeltaRequestPool() {
+        return deltaRequestPool;
+    }
+
 
     @Override
     public CatalinaCluster getCluster() {
@@ -175,8 +184,10 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
                 Valve[] valves = cluster.getValves();
                 if(valves != null && valves.length > 0) {
                     for(int i=0; replicationValve == null && i < valves.length ; i++ ){
-                        if(valves[i] instanceof ReplicationValve) replicationValve =
-                                (ReplicationValve)valves[i] ;
+                        if(valves[i] instanceof ReplicationValve) {
+                            replicationValve =
+                                    (ReplicationValve)valves[i] ;
+                        }
                     }//for
 
                     if(replicationValve == null && log.isDebugEnabled()) {
@@ -199,12 +210,16 @@ public abstract class ClusterManagerBase extends ManagerBase implements ClusterM
                 setCluster((CatalinaCluster)cluster);
             }
         }
-        if (cluster != null) cluster.registerManager(this);
+        if (cluster != null) {
+            cluster.registerManager(this);
+        }
     }
 
     @Override
     protected void stopInternal() throws LifecycleException {
-        if (cluster != null) cluster.removeManager(this);
+        if (cluster != null) {
+            cluster.removeManager(this);
+        }
         replicationValve = null;
         super.stopInternal();
     }

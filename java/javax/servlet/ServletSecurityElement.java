@@ -27,9 +27,11 @@ import javax.servlet.annotation.HttpMethodConstraint;
 import javax.servlet.annotation.ServletSecurity;
 
 /**
+ * The programmatic equivalent of
+ * {@link javax.servlet.annotation.ServletSecurity} used to configre
+ * security constraints for a Servlet.
  *
  * @since Servlet 3.0
- * TODO SERVLET3 - Add comments
  */
 public class ServletSecurityElement extends HttpConstraintElement {
 
@@ -71,6 +73,7 @@ public class ServletSecurityElement extends HttpConstraintElement {
      * @param httpConstraintElement Default constraint
      * @param httpMethodConstraints Method constraints
      * @throws IllegalArgumentException if a method name is specified more than
+     * once
      */
     public ServletSecurityElement(HttpConstraintElement httpConstraintElement,
             Collection<HttpMethodConstraintElement> httpMethodConstraints) {
@@ -84,6 +87,7 @@ public class ServletSecurityElement extends HttpConstraintElement {
      * Create from an annotation.
      * @param annotation Annotation to use as the basis for the new instance
      * @throws IllegalArgumentException if a method name is specified more than
+     * once
      */
     public ServletSecurityElement(ServletSecurity annotation) {
         this(new HttpConstraintElement(annotation.value().value(),
@@ -93,28 +97,38 @@ public class ServletSecurityElement extends HttpConstraintElement {
         List<HttpMethodConstraintElement> l = new ArrayList<>();
         HttpMethodConstraint[] constraints = annotation.httpMethodConstraints();
         if (constraints != null) {
-            for (int i = 0; i < constraints.length; i++) {
+            for (HttpMethodConstraint constraint : constraints) {
                 HttpMethodConstraintElement e =
-                    new HttpMethodConstraintElement(constraints[i].value(),
-                            new HttpConstraintElement(
-                                    constraints[i].emptyRoleSemantic(),
-                                    constraints[i].transportGuarantee(),
-                                    constraints[i].rolesAllowed()));
+                        new HttpMethodConstraintElement(constraint.value(),
+                                new HttpConstraintElement(
+                                        constraint.emptyRoleSemantic(),
+                                        constraint.transportGuarantee(),
+                                        constraint.rolesAllowed()));
                 l.add(e);
             }
         }
         addHttpMethodConstraints(l);
     }
 
+    /**
+     * Obtain the collection of security constraints configured for specific
+     * methods.
+     *
+     * @return The security constraints for specific methods
+     */
     public Collection<HttpMethodConstraintElement> getHttpMethodConstraints() {
-        Collection<HttpMethodConstraintElement> result = new HashSet<>();
-        result.addAll(methodConstraints.values());
+        Collection<HttpMethodConstraintElement> result = new HashSet<>(methodConstraints.values());
         return result;
     }
 
+    /**
+     * Obtain the collection HTTP methods for which security constraints have
+     * been defined.
+     *
+     * @return The names of the HTTP methods
+     */
     public Collection<String> getMethodNames() {
-        Collection<String> result = new HashSet<>();
-        result.addAll(methodConstraints.keySet());
+        Collection<String> result = new HashSet<>(methodConstraints.keySet());
         return result;
     }
 

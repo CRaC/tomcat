@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ha;
 
 import java.io.Serializable;
@@ -57,35 +56,30 @@ public abstract class ClusterListener implements ChannelListener {
 
     public void setCluster(CatalinaCluster cluster) {
         if (log.isDebugEnabled()) {
-            if (cluster != null)
+            if (cluster != null) {
                 log.debug("add ClusterListener " + this.toString() +
                         " to cluster" + cluster);
-            else
+            } else {
                 log.debug("remove ClusterListener " + this.toString() +
                         " from cluster");
+            }
         }
         this.cluster = cluster;
-    }
-
-    @Override
-    public boolean equals(Object listener) {
-        return super.equals(listener);
-    }
-
-    @Override
-    public int hashCode() {
-        return super.hashCode();
     }
 
     //--Logic---------------------------------------------------
 
     @Override
     public final void messageReceived(Serializable msg, Member member) {
-        if ( msg instanceof ClusterMessage ) messageReceived((ClusterMessage)msg);
+        if ( msg instanceof ClusterMessage ) {
+            messageReceived((ClusterMessage)msg);
+        }
     }
     @Override
     public final boolean accept(Serializable msg, Member member) {
-        if ( msg instanceof ClusterMessage ) return true;
+        if ( msg instanceof ClusterMessage ) {
+            return true;
+        }
         return false;
     }
 

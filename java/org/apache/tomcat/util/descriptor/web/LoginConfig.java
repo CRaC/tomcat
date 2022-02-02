@@ -27,14 +27,13 @@ import org.apache.tomcat.util.buf.UDecoder;
  *
  * @author Craig R. McClanahan
  */
-public class LoginConfig implements Serializable {
+public class LoginConfig extends XmlEncodingBase implements Serializable {
 
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
 
 
     // ----------------------------------------------------------- Constructors
-
 
     /**
      * Construct a new LoginConfig with default properties.
@@ -76,7 +75,7 @@ public class LoginConfig implements Serializable {
     private String authMethod = null;
 
     public String getAuthMethod() {
-        return (this.authMethod);
+        return this.authMethod;
     }
 
     public void setAuthMethod(String authMethod) {
@@ -90,14 +89,14 @@ public class LoginConfig implements Serializable {
     private String errorPage = null;
 
     public String getErrorPage() {
-        return (this.errorPage);
+        return this.errorPage;
     }
 
     public void setErrorPage(String errorPage) {
         //        if ((errorPage == null) || !errorPage.startsWith("/"))
         //            throw new IllegalArgumentException
         //                ("Error Page resource path must start with a '/'");
-        this.errorPage = UDecoder.URLDecode(errorPage);
+        this.errorPage = UDecoder.URLDecode(errorPage, getCharset());
     }
 
 
@@ -107,14 +106,14 @@ public class LoginConfig implements Serializable {
     private String loginPage = null;
 
     public String getLoginPage() {
-        return (this.loginPage);
+        return this.loginPage;
     }
 
     public void setLoginPage(String loginPage) {
         //        if ((loginPage == null) || !loginPage.startsWith("/"))
         //            throw new IllegalArgumentException
         //                ("Login Page resource path must start with a '/'");
-        this.loginPage = UDecoder.URLDecode(loginPage);
+        this.loginPage = UDecoder.URLDecode(loginPage, getCharset());
     }
 
 
@@ -125,7 +124,7 @@ public class LoginConfig implements Serializable {
     private String realmName = null;
 
     public String getRealmName() {
-        return (this.realmName);
+        return this.realmName;
     }
 
     public void setRealmName(String realmName) {
@@ -141,7 +140,6 @@ public class LoginConfig implements Serializable {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("LoginConfig[");
         sb.append("authMethod=");
         sb.append(authMethod);
@@ -157,9 +155,8 @@ public class LoginConfig implements Serializable {
             sb.append(", errorPage=");
             sb.append(errorPage);
         }
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -187,31 +184,41 @@ public class LoginConfig implements Serializable {
      */
     @Override
     public boolean equals(Object obj) {
-        if (this == obj)
+        if (this == obj) {
             return true;
-        if (!(obj instanceof LoginConfig))
+        }
+        if (!(obj instanceof LoginConfig)) {
             return false;
+        }
         LoginConfig other = (LoginConfig) obj;
         if (authMethod == null) {
-            if (other.authMethod != null)
+            if (other.authMethod != null) {
                 return false;
-        } else if (!authMethod.equals(other.authMethod))
+            }
+        } else if (!authMethod.equals(other.authMethod)) {
             return false;
+        }
         if (errorPage == null) {
-            if (other.errorPage != null)
+            if (other.errorPage != null) {
                 return false;
-        } else if (!errorPage.equals(other.errorPage))
+            }
+        } else if (!errorPage.equals(other.errorPage)) {
             return false;
+        }
         if (loginPage == null) {
-            if (other.loginPage != null)
+            if (other.loginPage != null) {
                 return false;
-        } else if (!loginPage.equals(other.loginPage))
+            }
+        } else if (!loginPage.equals(other.loginPage)) {
             return false;
+        }
         if (realmName == null) {
-            if (other.realmName != null)
+            if (other.realmName != null) {
                 return false;
-        } else if (!realmName.equals(other.realmName))
+            }
+        } else if (!realmName.equals(other.realmName)) {
             return false;
+        }
         return true;
     }
 

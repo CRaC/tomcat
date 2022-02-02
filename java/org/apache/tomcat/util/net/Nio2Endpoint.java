@@ -29,7 +29,6 @@ import java.nio.channels.AsynchronousServerSocketChannel;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.channels.FileChannel;
-import java.nio.channels.InterruptedByTimeoutException;
 import java.nio.channels.NetworkChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ExecutionException;
@@ -40,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLSession;
 
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -84,6 +82,8 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
      * Bytebuffer cache, each channel holds a set of buffers (two, except for SSL holds four)
      */
     private SynchronizedStack<Nio2Channel> nioChannels;
+
+    private SocketAddress previousAcceptedSocketRemoteAddress = null;
 
 
     public Nio2Endpoint() {
@@ -149,12 +149,6 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         InetSocketAddress addr = (getAddress()!=null?new InetSocketAddress(getAddress(),getPort()):new InetSocketAddress(getPort()));
         serverSock.bind(addr, getAcceptCount());
 
-        // Initialize thread count defaults for acceptor, poller
-        if (acceptorThreadCount != 1) {
-            // NIO2 does not allow any form of IO concurrency
-            acceptorThreadCount = 1;
-        }
-
         // Initialize SSL if needed
         initialiseSsl();
     }
@@ -216,7 +210,10 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     }
                 }
             });
-            nioChannels.clear();
+            Nio2Channel socket;
+            while ((socket = nioChannels.pop()) != null) {
+                socket.free();
+            }
             processorCache.clear();
         }
     }
@@ -257,8 +254,8 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
             try {
                 long timeout = getExecutorTerminationTimeoutMillis();
                 while (timeout > 0 && !allClosed) {
-                    timeout -= 100;
-                    Thread.sleep(100);
+                    timeout -= 1;
+                    Thread.sleep(1);
                 }
                 threadGroup.shutdownNow();
                 if (timeout > 0) {
@@ -322,7 +319,6 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
             socketWrapper.setReadTimeout(getSocketProperties().getSoTimeout());
             socketWrapper.setWriteTimeout(getSocketProperties().getSoTimeout());
             socketWrapper.setKeepAliveLeft(Nio2Endpoint.this.getMaxKeepAliveRequests());
-            socketWrapper.setSecure(isSSLEnabled());
             socketWrapper.setReadTimeout(getConnectionTimeout());
             socketWrapper.setWriteTimeout(getConnectionTimeout());
             // Continue processing on another thread
@@ -366,17 +362,40 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         public void run() {
 
             int errorDelay = 0;
+            long pauseStart = 0;
 
             // Loop until we receive a shutdown command
             while (running) {
 
-                // Loop if endpoint is paused
+                // Loop if endpoint is paused.
+                // There are two likely scenarios here.
+                // The first scenario is that Tomcat is shutting down. In this
+                // case - and particularly for the unit tests - we want to exit
+                // this loop as quickly as possible. The second scenario is a
+                // genuine pause of the connector. In this case we want to avoid
+                // excessive CPU usage.
+                // Therefore, we start with a tight loop but if there isn't a
+                // rapid transition to stop then sleeps are introduced.
+                // < 1ms       - tight loop
+                // 1ms to 10ms - 1ms sleep
+                // > 10ms      - 10ms sleep
                 while (paused && running) {
-                    state = AcceptorState.PAUSED;
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        // Ignore
+                    if (state != AcceptorState.PAUSED) {
+                        pauseStart = System.nanoTime();
+                        // Entered pause state
+                        state = AcceptorState.PAUSED;
+                    }
+                    if ((System.nanoTime() - pauseStart) > 1_000_000) {
+                        // Paused for more than 1ms
+                        try {
+                            if ((System.nanoTime() - pauseStart) > 10_000_000) {
+                                Thread.sleep(10);
+                            } else {
+                                Thread.sleep(1);
+                            }
+                        } catch (InterruptedException e) {
+                            // Ignore
+                        }
                     }
                 }
 
@@ -394,6 +413,13 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                         // Accept the next incoming connection from the server
                         // socket
                         socket = serverSock.accept().get();
+
+                        SocketAddress currentRemoteAddress = socket.getRemoteAddress();
+                        if (currentRemoteAddress.equals(previousAcceptedSocketRemoteAddress)) {
+                            throw new IOException(sm.getString("endpoint.err.duplicateAccept"));
+                        }
+                        previousAcceptedSocketRemoteAddress = currentRemoteAddress;
+
                     } catch (Exception e) {
                         // We didn't get a socket
                         countDownConnection();
@@ -519,7 +545,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                         }
                     }
                 }
-                getSocket().write(buffer, toNio2Timeout(getWriteTimeout()), TimeUnit.MILLISECONDS, attachment, this);
+                getSocket().write(buffer, toTimeout(getWriteTimeout()), TimeUnit.MILLISECONDS, attachment, this);
             }
 
             @Override
@@ -599,11 +625,11 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                             // Continue writing data using a gathering write
                             ByteBuffer[] array = nonBlockingWriteBuffer.toArray(attachment);
                             getSocket().write(array, 0, array.length,
-                                    toNio2Timeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
+                                    toTimeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
                                     array, gatheringWriteCompletionHandler);
                         } else if (attachment.hasRemaining()) {
                             // Regular write
-                            getSocket().write(attachment, toNio2Timeout(getWriteTimeout()),
+                            getSocket().write(attachment, toTimeout(getWriteTimeout()),
                                     TimeUnit.MILLISECONDS, attachment, writeCompletionHandler);
                         } else {
                             // All data has been written
@@ -645,11 +671,11 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     synchronized (writeCompletionHandler) {
                         if (nBytes.longValue() < 0) {
                             failed(new EOFException(sm.getString("iob.failedwrite")), attachment);
-                        } else if (!nonBlockingWriteBuffer.isEmpty() || arrayHasData(attachment)) {
+                        } else if (!nonBlockingWriteBuffer.isEmpty() || buffersArrayHasRemaining(attachment, 0, attachment.length)) {
                             // Continue writing data using a gathering write
                             ByteBuffer[] array = nonBlockingWriteBuffer.toArray(attachment);
                             getSocket().write(array, 0, array.length,
-                                    toNio2Timeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
+                                    toTimeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
                                     array, gatheringWriteCompletionHandler);
                         } else {
                             // All data has been written
@@ -683,15 +709,6 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                }
             };
 
-        }
-
-        private static boolean arrayHasData(ByteBuffer[] byteBuffers) {
-            for (ByteBuffer byteBuffer : byteBuffers) {
-                if (byteBuffer.hasRemaining()) {
-                    return true;
-                }
-            }
-            return false;
         }
 
 
@@ -928,252 +945,107 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
 
         @Override
         public boolean hasAsyncIO() {
+            return getEndpoint().getUseAsyncIO();
+        }
+
+        @Override
+        public boolean needSemaphores() {
             return true;
         }
 
-        /**
-         * Internal state tracker for scatter/gather operations.
-         */
-        private static class OperationState<A> {
-            private final boolean read;
-            private final ByteBuffer[] buffers;
-            private final int offset;
-            private final int length;
-            private final A attachment;
-            private final long timeout;
-            private final TimeUnit unit;
-            private final BlockingMode block;
-            private final CompletionCheck check;
-            private final CompletionHandler<Long, ? super A> handler;
-            private final Semaphore semaphore;
-            private OperationState(boolean read, ByteBuffer[] buffers, int offset, int length,
+        @Override
+        public boolean hasPerOperationTimeout() {
+            return true;
+        }
+
+        @Override
+        protected <A> OperationState<A> newOperationState(boolean read,
+                ByteBuffer[] buffers, int offset, int length,
+                BlockingMode block, long timeout, TimeUnit unit, A attachment,
+                CompletionCheck check, CompletionHandler<Long, ? super A> handler,
+                Semaphore semaphore, VectoredIOCompletionHandler<A> completion) {
+            return new Nio2OperationState<>(read, buffers, offset, length, block,
+                    timeout, unit, attachment, check, handler, semaphore, completion);
+        }
+
+        private class Nio2OperationState<A> extends OperationState<A> {
+            private Nio2OperationState(boolean read, ByteBuffer[] buffers, int offset, int length,
                     BlockingMode block, long timeout, TimeUnit unit, A attachment,
                     CompletionCheck check, CompletionHandler<Long, ? super A> handler,
-                    Semaphore semaphore) {
-                this.read = read;
-                this.buffers = buffers;
-                this.offset = offset;
-                this.length = length;
-                this.block = block;
-                this.timeout = timeout;
-                this.unit = unit;
-                this.attachment = attachment;
-                this.check = check;
-                this.handler = handler;
-                this.semaphore = semaphore;
+                    Semaphore semaphore, VectoredIOCompletionHandler<A> completion) {
+                super(read, buffers, offset, length, block,
+                    timeout, unit, attachment, check, handler, semaphore, completion);
             }
-            private volatile long nBytes = 0;
-            private volatile CompletionState state = CompletionState.PENDING;
-        }
 
-        @Override
-        public <A> CompletionState read(ByteBuffer[] dsts, int offset, int length,
-                BlockingMode block, long timeout, TimeUnit unit, A attachment,
-                CompletionCheck check, CompletionHandler<Long, ? super A> handler) {
-            IOException ioe = getError();
-            if (ioe != null) {
-                handler.failed(ioe, attachment);
-                return CompletionState.ERROR;
-            }
-            if (timeout == -1) {
-                timeout = toNio2Timeout(getReadTimeout());
-            }
-            // Disable any regular read notifications caused by registerReadInterest
-            readNotify = true;
-            if (block != BlockingMode.NON_BLOCK) {
-                try {
-                    if (!readPending.tryAcquire(timeout, unit)) {
-                        handler.failed(new SocketTimeoutException(), attachment);
-                        return CompletionState.ERROR;
-                    }
-                } catch (InterruptedException e) {
-                    handler.failed(e, attachment);
-                    return CompletionState.ERROR;
-                }
-            } else {
-                if (!readPending.tryAcquire()) {
-                    return CompletionState.NOT_DONE;
-                }
-            }
-            OperationState<A> state = new OperationState<>(true, dsts, offset, length, block,
-                    timeout, unit, attachment, check, handler, readPending);
-            VectoredIOCompletionHandler<A> completion = new VectoredIOCompletionHandler<>();
-            Nio2Endpoint.startInline();
-            long nBytes = 0;
-            if (!socketBufferHandler.isReadBufferEmpty()) {
-                // There is still data inside the main read buffer, use it to fill out the destination buffers
-                synchronized (readCompletionHandler) {
-                    // Note: It is not necessary to put this code in the completion handler
-                    socketBufferHandler.configureReadBufferForRead();
-                    for (int i = 0; i < length && !socketBufferHandler.isReadBufferEmpty(); i++) {
-                        nBytes += transfer(socketBufferHandler.getReadBuffer(), dsts[offset + i]);
-                    }
-                }
-                if (nBytes > 0) {
-                    completion.completed(Long.valueOf(nBytes), state);
-                }
-            }
-            if (nBytes == 0) {
-                getSocket().read(dsts, offset, length, timeout, unit, state, completion);
-            }
-            Nio2Endpoint.endInline();
-            if (block == BlockingMode.BLOCK) {
-                synchronized (state) {
-                    if (state.state == CompletionState.PENDING) {
-                        try {
-                            state.wait(unit.toMillis(timeout));
-                            if (state.state == CompletionState.PENDING) {
-                                return CompletionState.ERROR;
-                            }
-                        } catch (InterruptedException e) {
-                            handler.failed(new SocketTimeoutException(), attachment);
-                            return CompletionState.ERROR;
-                        }
-                    }
-                }
-            }
-            return state.state;
-        }
-
-        @Override
-        public <A> CompletionState write(ByteBuffer[] srcs, int offset, int length,
-                BlockingMode block, long timeout, TimeUnit unit, A attachment,
-                CompletionCheck check, CompletionHandler<Long, ? super A> handler) {
-            IOException ioe = getError();
-            if (ioe != null) {
-                handler.failed(ioe, attachment);
-                return CompletionState.ERROR;
-            }
-            if (timeout == -1) {
-                timeout = toNio2Timeout(getWriteTimeout());
-            }
-            // Disable any regular write notifications caused by registerWriteInterest
-            writeNotify = true;
-            if (block != BlockingMode.NON_BLOCK) {
-                try {
-                    if (!writePending.tryAcquire(timeout, unit)) {
-                        handler.failed(new SocketTimeoutException(), attachment);
-                        return CompletionState.ERROR;
-                    }
-                } catch (InterruptedException e) {
-                    handler.failed(e, attachment);
-                    return CompletionState.ERROR;
-                }
-            } else {
-                if (!writePending.tryAcquire()) {
-                    return CompletionState.NOT_DONE;
-                }
-            }
-            if (!socketBufferHandler.isWriteBufferEmpty()) {
-                // First flush the main buffer as needed
-                try {
-                    doWrite(true);
-                } catch (IOException e) {
-                    handler.failed(e, attachment);
-                    return CompletionState.ERROR;
-                }
-            }
-            OperationState<A> state = new OperationState<>(false, srcs, offset, length, block,
-                    timeout, unit, attachment, check, handler, writePending);
-            VectoredIOCompletionHandler<A> completion = new VectoredIOCompletionHandler<>();
-            Nio2Endpoint.startInline();
-            // It should be less necessary to check the buffer state as it is easy to flush before
-            getSocket().write(srcs, offset, length, timeout, unit, state, completion);
-            Nio2Endpoint.endInline();
-            if (block == BlockingMode.BLOCK) {
-                synchronized (state) {
-                    if (state.state == CompletionState.PENDING) {
-                        try {
-                            state.wait(unit.toMillis(timeout));
-                            if (state.state == CompletionState.PENDING) {
-                                return CompletionState.ERROR;
-                            }
-                        } catch (InterruptedException e) {
-                            handler.failed(new SocketTimeoutException(), attachment);
-                            return CompletionState.ERROR;
-                        }
-                    }
-                }
-            }
-            return state.state;
-        }
-
-        private class VectoredIOCompletionHandler<A> implements CompletionHandler<Long, OperationState<A>> {
             @Override
-            public void completed(Long nBytes, OperationState<A> state) {
-                if (nBytes.longValue() < 0) {
-                    failed(new EOFException(), state);
+            protected boolean isInline() {
+                return Nio2Endpoint.isInline();
+            }
+
+            @Override
+            protected void start() {
+                if (read) {
+                    // Disable any regular read notifications caused by registerReadInterest
+                    readNotify = true;
                 } else {
-                    state.nBytes += nBytes.longValue();
-                    CompletionState currentState = Nio2Endpoint.isInline() ? CompletionState.INLINE : CompletionState.DONE;
-                    boolean complete = true;
-                    boolean completion = true;
-                    if (state.check != null) {
-                        switch (state.check.callHandler(currentState, state.buffers, state.offset, state.length)) {
-                        case CONTINUE:
-                            complete = false;
-                            break;
-                        case DONE:
-                            break;
-                        case NONE:
-                            completion = false;
-                            break;
-                        }
-                    }
-                    if (complete) {
-                        boolean notify = false;
-                        state.semaphore.release();
-                        if (state.block == BlockingMode.BLOCK && currentState != CompletionState.INLINE) {
-                            notify = true;
-                        } else {
-                            state.state = currentState;
-                        }
-                        if (completion && state.handler != null) {
-                            state.handler.completed(Long.valueOf(state.nBytes), state.attachment);
-                        }
-                        if (notify) {
-                            synchronized (state) {
-                                state.state = currentState;
-                                state.notify();
+                    // Disable any regular write notifications caused by registerWriteInterest
+                    writeNotify = true;
+                }
+                Nio2Endpoint.startInline();
+                run();
+                Nio2Endpoint.endInline();
+            }
+
+            @Override
+            public void run() {
+                if (read) {
+                    long nBytes = 0;
+                    // If there is still data inside the main read buffer, it needs to be read first
+                    if (!socketBufferHandler.isReadBufferEmpty()) {
+                        synchronized (readCompletionHandler) {
+                            socketBufferHandler.configureReadBufferForRead();
+                            for (int i = 0; i < length && !socketBufferHandler.isReadBufferEmpty(); i++) {
+                                nBytes += transfer(socketBufferHandler.getReadBuffer(), buffers[offset + i]);
                             }
                         }
-                    } else {
-                        if (state.read) {
-                            getSocket().read(state.buffers, state.offset, state.length,
-                                    state.timeout, state.unit, state, this);
-                        } else {
-                            getSocket().write(state.buffers, state.offset, state.length,
-                                    state.timeout, state.unit, state, this);
+                        if (nBytes > 0) {
+                            completion.completed(Long.valueOf(nBytes), this);
                         }
                     }
-                }
-            }
-            @Override
-            public void failed(Throwable exc, OperationState<A> state) {
-                IOException ioe;
-                if (exc instanceof InterruptedByTimeoutException) {
-                    ioe = new SocketTimeoutException();
-                } else if (exc instanceof IOException) {
-                    ioe = (IOException) exc;
-                } else {
-                    ioe = new IOException(exc);
-                }
-                setError(ioe);
-                boolean notify = false;
-                state.semaphore.release();
-                if (state.block == BlockingMode.BLOCK) {
-                    notify = true;
-                } else {
-                    state.state = Nio2Endpoint.isInline() ? CompletionState.ERROR : CompletionState.DONE;
-                }
-                if (state.handler != null) {
-                    state.handler.failed(ioe, state.attachment);
-                }
-                if (notify) {
-                    synchronized (state) {
-                        state.state = Nio2Endpoint.isInline() ? CompletionState.ERROR : CompletionState.DONE;
-                        state.notify();
+                    if (nBytes == 0) {
+                        getSocket().read(buffers, offset, length, timeout, unit, this, completion);
                     }
+                } else {
+                    // If there is still data inside the main write buffer, it needs to be written first
+                    if (!socketBufferHandler.isWriteBufferEmpty()) {
+                        synchronized (writeCompletionHandler) {
+                            socketBufferHandler.configureWriteBufferForRead();
+                            ByteBuffer[] array = nonBlockingWriteBuffer.toArray(socketBufferHandler.getWriteBuffer());
+                            if (buffersArrayHasRemaining(array, 0, array.length)) {
+                                getSocket().write(array, 0, array.length, timeout, unit,
+                                        array, new CompletionHandler<Long, ByteBuffer[]>() {
+                                            @Override
+                                            public void completed(Long nBytes, ByteBuffer[] buffers) {
+                                                if (nBytes.longValue() < 0) {
+                                                    failed(new EOFException(), null);
+                                                } else if (buffersArrayHasRemaining(buffers, 0, buffers.length)) {
+                                                    getSocket().write(buffers, 0, buffers.length, toTimeout(getWriteTimeout()),
+                                                            TimeUnit.MILLISECONDS, buffers, this);
+                                                } else {
+                                                    // Continue until everything is written
+                                                    process();
+                                                }
+                                            }
+                                            @Override
+                                            public void failed(Throwable exc, ByteBuffer[] buffers) {
+                                                completion.failed(exc, Nio2OperationState.this);
+                                            }
+                                        });
+                                return;
+                            }
+                        }
+                    }
+                    getSocket().write(buffers, offset, length, timeout, unit, this, completion);
                 }
             }
         }
@@ -1220,7 +1092,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 }
             } else {
                 Nio2Endpoint.startInline();
-                getSocket().read(to, toNio2Timeout(getReadTimeout()), TimeUnit.MILLISECONDS, to,
+                getSocket().read(to, toTimeout(getReadTimeout()), TimeUnit.MILLISECONDS, to,
                         readCompletionHandler);
                 Nio2Endpoint.endInline();
                 if (readPending.availablePermits() == 1) {
@@ -1361,7 +1233,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
             // Before doing a blocking flush, make sure that any pending non
             // blocking write has completed.
             try {
-                if (writePending.tryAcquire(toNio2Timeout(getWriteTimeout()), TimeUnit.MILLISECONDS)) {
+                if (writePending.tryAcquire(toTimeout(getWriteTimeout()), TimeUnit.MILLISECONDS)) {
                     writePending.release();
                 } else {
                     throw new SocketTimeoutException();
@@ -1388,13 +1260,13 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     if (!nonBlockingWriteBuffer.isEmpty()) {
                         ByteBuffer[] array = nonBlockingWriteBuffer.toArray(socketBufferHandler.getWriteBuffer());
                         Nio2Endpoint.startInline();
-                        getSocket().write(array, 0, array.length, toNio2Timeout(getWriteTimeout()),
+                        getSocket().write(array, 0, array.length, toTimeout(getWriteTimeout()),
                                 TimeUnit.MILLISECONDS, array, gatheringWriteCompletionHandler);
                         Nio2Endpoint.endInline();
                     } else if (socketBufferHandler.getWriteBuffer().hasRemaining()) {
                         // Regular write
                         Nio2Endpoint.startInline();
-                        getSocket().write(socketBufferHandler.getWriteBuffer(), toNio2Timeout(getWriteTimeout()),
+                        getSocket().write(socketBufferHandler.getWriteBuffer(), toTimeout(getWriteTimeout()),
                                 TimeUnit.MILLISECONDS, socketBufferHandler.getWriteBuffer(),
                                 writeCompletionHandler);
                         Nio2Endpoint.endInline();
@@ -1490,6 +1362,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 if (readNotify) {
                     return;
                 }
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("endpoint.debug.registerRead", this));
+                }
                 readInterest = true;
                 if (readPending.tryAcquire()) {
                     // No read pending, so do a read
@@ -1514,6 +1389,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 // A notification is already being sent
                 if (writeNotify) {
                     return;
+                }
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("endpoint.debug.registerWrite", this));
                 }
                 writeInterest = true;
                 if (writePending.availablePermits() == 1) {
@@ -1557,7 +1435,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 data.length -= nRead;
                 getSocket().getBufHandler().configureWriteBufferForRead();
                 Nio2Endpoint.startInline();
-                getSocket().write(buffer, toNio2Timeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
+                getSocket().write(buffer, toTimeout(getWriteTimeout()), TimeUnit.MILLISECONDS,
                         data, sendfileHandler);
                 Nio2Endpoint.endInline();
                 if (data.doneInline) {
@@ -1670,11 +1548,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         public SSLSupport getSslSupport(String clientCertProvider) {
             if (getSocket() instanceof SecureNio2Channel) {
                 SecureNio2Channel ch = (SecureNio2Channel) getSocket();
-                SSLSession session = ch.getSslEngine().getSession();
-                return ((Nio2Endpoint) getEndpoint()).getSslImplementation().getSSLSupport(session);
-            } else {
-                return null;
+                return ch.getSSLSupport();
             }
+            return null;
         }
 
 
@@ -1695,11 +1571,6 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
         public void setAppReadBufHandler(ApplicationBufferHandler handler) {
             getSocket().setAppReadBufHandler(handler);
         }
-    }
-
-    public static long toNio2Timeout(long timeout) {
-        // NIO2 can't do infinite timeout so use Long.MAX_VALUE if timeout is <= 0
-        return (timeout > 0) ? timeout : Long.MAX_VALUE;
     }
 
     public static void startInline() {
@@ -1775,7 +1646,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                     if (state == SocketState.CLOSED) {
                         // Close socket and pool
                         socketWrapper.close();
-                        if (running && !paused) {
+                        if (running) {
                             if (!nioChannels.push(socketWrapper.getSocket())) {
                                 socketWrapper.getSocket().free();
                             }
@@ -1784,8 +1655,9 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                         launch = true;
                     }
                 } else if (handshake == -1 ) {
+                    getHandler().process(socketWrapper, SocketEvent.CONNECT_FAIL);
                     socketWrapper.close();
-                    if (running && !paused) {
+                    if (running) {
                         if (!nioChannels.push(socketWrapper.getSocket())) {
                             socketWrapper.getSocket().free();
                         }
@@ -1812,7 +1684,7 @@ public class Nio2Endpoint extends AbstractJsseEndpoint<Nio2Channel> {
                 socketWrapper = null;
                 event = null;
                 //return to cache
-                if (running && !paused) {
+                if (running) {
                     processorCache.push(this);
                 }
             }

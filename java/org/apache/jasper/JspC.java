@@ -420,8 +420,7 @@ public class JspC extends Task implements Options {
                 setThreadCount(nextArg());
             } else {
                 if (tok.startsWith("-")) {
-                    throw new JasperException("Unrecognized option: " + tok +
-                        ".  Use -help for help.");
+                    throw new JasperException(Localizer.getMessage("jspc.error.unknownOption", tok));
                 }
                 if (!fullstop) {
                     argPos--;
@@ -451,9 +450,6 @@ public class JspC extends Task implements Options {
         return true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean getTrimSpaces() {
         return trimSpaces;
@@ -819,8 +815,9 @@ public class JspC extends Task implements Options {
      */
     @Override
     public String getClassPath() {
-        if( classPath != null )
+        if( classPath != null ) {
             return classPath;
+        }
         return System.getProperty("java.class.path");
     }
 
@@ -979,10 +976,11 @@ public class JspC extends Task implements Options {
                 newThreadCount = Integer.parseInt(threadCount);
             }
         } catch (NumberFormatException e) {
-            throw new BuildException("Couldn't parse thread count: " + threadCount);
+            throw new BuildException(Localizer.getMessage("jspc.error.parseThreadCount", threadCount));
         }
         if (newThreadCount < 1) {
-            throw new BuildException("There must be at least one thread: " + newThreadCount);
+            throw new BuildException(Localizer.getMessage(
+                    "jspc.error.minThreadCount", Integer.valueOf(newThreadCount)));
         }
         this.threadCount = newThreadCount;
     }
@@ -1141,7 +1139,7 @@ public class JspC extends Task implements Options {
         String packageName = clctxt.getServletPackageName();
 
         String thisServletName;
-        if  ("".equals(packageName)) {
+        if  (packageName.isEmpty()) {
             thisServletName = className;
         } else {
             thisServletName = packageName + '.' + className;
@@ -1249,12 +1247,14 @@ public class JspC extends Task implements Options {
             }
         }
 
-        if(!webXml2.delete() && log.isDebugEnabled())
+        if(!webXml2.delete() && log.isDebugEnabled()) {
             log.debug(Localizer.getMessage("jspc.delete.fail",
                     webXml2.toString()));
+        }
 
-        if (!(new File(webxmlFile)).delete() && log.isDebugEnabled())
+        if (!(new File(webxmlFile)).delete() && log.isDebugEnabled()) {
             log.debug(Localizer.getMessage("jspc.delete.fail", webxmlFile));
+        }
 
     }
 
@@ -1523,7 +1523,7 @@ public class JspC extends Task implements Options {
                             }
                         } else {
                             errorCount++;
-                            log.error(e.getMessage());
+                            log.error(Localizer.getMessage("jspc.error.compilation"), e);
                         }
                     } catch (InterruptedException e) {
                         // Ignore
@@ -1540,6 +1540,8 @@ public class JspC extends Task implements Options {
             String msg = Localizer.getMessage("jspc.generation.result",
                     Integer.toString(errorCount), Long.toString(time));
             if (failOnError && errorCount > 0) {
+                System.out.println(Localizer.getMessage(
+                        "jspc.errorCount", Integer.valueOf(errorCount)));
                 throw new BuildException(msg);
             } else {
                 log.info(msg);
@@ -1577,7 +1579,9 @@ public class JspC extends Task implements Options {
     }
 
     protected String nextFile() {
-        if (fullstop) argPos++;
+        if (fullstop) {
+            argPos++;
+        }
         if (argPos >= args.length) {
             return null;
         } else {
@@ -1695,7 +1699,7 @@ public class JspC extends Task implements Options {
         }
 
         // Turn the classPath into URLs
-        ArrayList<URL> urls = new ArrayList<>();
+        List<URL> urls = new ArrayList<>();
         StringTokenizer tokenizer = new StringTokenizer(classPath,
                                                         File.pathSeparator);
         while (tokenizer.hasMoreTokens()) {
@@ -1726,24 +1730,24 @@ public class JspC extends Task implements Options {
                 // therefore we have permission to freak out
                 throw new RuntimeException(ioe.toString());
             }
-            File lib = new File(webappBase, "/WEB-INF/lib");
-            if (lib.exists() && lib.isDirectory()) {
-                String[] libs = lib.list();
+            File webinfLib = new File(webappBase, "/WEB-INF/lib");
+            if (webinfLib.exists() && webinfLib.isDirectory()) {
+                String[] libs = webinfLib.list();
                 if (libs != null) {
-                    for (int i = 0; i < libs.length; i++) {
-                        if( libs[i].length() <5 ) continue;
-                        String ext=libs[i].substring( libs[i].length() - 4 );
-                        if (! ".jar".equalsIgnoreCase(ext)) {
+                    for (String lib : libs) {
+                        if (lib.length() < 5) {
+                            continue;
+                        }
+                        String ext = lib.substring(lib.length() - 4);
+                        if (!".jar".equalsIgnoreCase(ext)) {
                             if (".tld".equalsIgnoreCase(ext)) {
-                                log.warn("TLD files should not be placed in "
-                                         + "/WEB-INF/lib");
+                                log.warn(Localizer.getMessage("jspc.warning.tldInWebInfLib"));
                             }
                             continue;
                         }
                         try {
-                            File libFile = new File(lib, libs[i]);
-                            classPath = classPath + File.pathSeparator
-                                + libFile.getAbsolutePath();
+                            File libFile = new File(webinfLib, lib);
+                            classPath = classPath + File.pathSeparator + libFile.getAbsolutePath();
                             urls.add(libFile.getAbsoluteFile().toURI().toURL());
                         } catch (IOException ioe) {
                             // failing a toCanonicalPath on a file that

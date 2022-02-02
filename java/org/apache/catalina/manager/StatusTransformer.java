@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.manager;
 
 import java.io.PrintWriter;
@@ -74,7 +72,9 @@ public class StatusTransformer {
     public static void writeHeader(PrintWriter writer, Object[] args, int mode) {
         if (mode == 0){
             // HTML Header Section
-            writer.print(Constants.HTML_HEADER_SECTION);
+            writer.print(MessageFormat.format(
+                Constants.HTML_HEADER_SECTION, args
+            ));
         } else if (mode == 1){
             writer.write(Constants.XML_DECLARATION);
             writer.print(MessageFormat.format
@@ -337,11 +337,11 @@ public class StatusTransformer {
 
             ObjectName grpName = null;
 
-            Enumeration<ObjectName> enumeration =
-                globalRequestProcessors.elements();
+            Enumeration<ObjectName> enumeration = globalRequestProcessors.elements();
+            // Find the HTTP/1.1 RequestGroupInfo - BZ 65404
             while (enumeration.hasMoreElements()) {
                 ObjectName objectName = enumeration.nextElement();
-                if (name.equals(objectName.getKeyProperty("name"))) {
+                if (name.equals(objectName.getKeyProperty("name")) && objectName.getKeyProperty("Upgrade") == null) {
                     grpName = objectName;
                 }
             }
@@ -407,11 +407,11 @@ public class StatusTransformer {
 
             ObjectName grpName = null;
 
-            Enumeration<ObjectName> enumeration =
-                globalRequestProcessors.elements();
+            Enumeration<ObjectName> enumeration = globalRequestProcessors.elements();
+            // Find the HTTP/1.1 RequestGroupInfo - BZ 65404
             while (enumeration.hasMoreElements()) {
                 ObjectName objectName = enumeration.nextElement();
-                if (name.equals(objectName.getKeyProperty("name"))) {
+                if (name.equals(objectName.getKeyProperty("name")) && objectName.getKeyProperty("Upgrade") == null) {
                     grpName = objectName;
                 }
             }
@@ -953,8 +953,9 @@ public class StatusTransformer {
     @Deprecated
     public static String filter(Object obj) {
 
-        if (obj == null)
+        if (obj == null) {
             return ("?");
+        }
         String message = obj.toString();
 
         char content[] = new char[message.length()];
@@ -978,7 +979,7 @@ public class StatusTransformer {
                 result.append(content[i]);
             }
         }
-        return (result.toString());
+        return result.toString();
 
     }
 
@@ -992,8 +993,9 @@ public class StatusTransformer {
      */
     @Deprecated
     public static String filterXml(String s) {
-        if (s == null)
+        if (s == null) {
             return "";
+        }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);

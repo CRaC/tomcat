@@ -44,6 +44,15 @@
   the Servlet API is fundamentally blocking, each HTTP/2 stream requires a
   dedicated container thread for the duration of that stream.</p>
 
+  <p>Requests processed using HTTP/2 will have the following additional request
+  attributes available:</p>
+  <ul>
+    <li><code>org.apache.coyote.connectionID</code> will return the HTTP/2
+        connection ID</li>
+    <li><code>org.apache.coyote.streamID</code> will return the HTTP/2 stream
+        ID</li>
+  </ul>
+
 </section>
 
 
@@ -142,7 +151,7 @@
       <p>The controls the maximum number of active streams permitted for any one
       connection. If a client attempts to open more active streams than this
       limit, the stream will be reset with a <code>STREAM_REFUSED</code> error.
-      If not specified, the default value of <code>200</code> will be used.</p>
+      If not specified, the default value of <code>100</code> will be used.</p>
     </attribute>
 
     <attribute name="maxHeaderCount" required="false">
@@ -179,6 +188,14 @@
       means no limit. If not specified, a default of 8192 is used.</p>
     </attribute>
 
+    <attribute name="noCompressionStrongETag" required="false">
+      <p>This flag configures whether resources with a stong ETag will be
+      considered for compression. If <code>true</code>, resources with a strong
+      ETag will not be compressed. The default value is <code>true</code>.</p>
+      <p>This attribute is deprecated. It will be removed in Tomcat 10 onwards
+      where it will be hard-coded to <code>true</code>.</p>
+    </attribute>
+
     <attribute name="noCompressionUserAgents" required="false">
       <p>The value is a regular expression (using <code>java.util.regex</code>)
       matching the <code>user-agent</code> header of HTTP clients for which
@@ -188,18 +205,51 @@
       The default value is an empty String (regexp matching disabled).</p>
     </attribute>
 
+    <attribute name="overheadContinuationThreshold" required="false">
+      <p>The threshold below which the payload size of a non-final
+      <code>CONTINUATION</code> frame will trigger an increase in the overhead
+      count (see <strong>overheadCountFactor</strong>). The overhead count will
+      be increased by <code>overheadContinuationThreshold/payloadSize</code> so
+      that the smaller the <code>CONTINUATION</code> frame, the greater the
+      increase in the overhead count. A value of zero or less disables the
+      checking of non-final <code>CONTINUATION</code> frames. If not specified,
+      a default value of <code>1024</code> will be used.</p>
+    </attribute>
+
     <attribute name="overheadCountFactor" required="false">
       <p>The factor to apply when counting overhead frames to determine if a
       connection has too high an overhead and should be closed. The overhead
-      count starts at <code>-10</code>. The count is decreased for each
-      data frame sent or received and each headers frame received. The count is
-      increased by the <code>overheadCountFactor</code>for each setting
-      received, priority frame received and ping received. If the overhead count
-      exceeds zero, the connection is closed. A value of less than
-      <code>1</code> disables this protection. In normal usage a value of
-      <code>3</code> or more will close the connection before any streams can
-      complete. If not specified, a default value of <code>1</code> will be
-      used.</p>
+      count starts at <code>-10 * overheadCountFactor</code>. The count is
+      decreased by 20 for each data frame sent or received and each headers frame
+      received. The count is increased by the <code>overheadCountFactor</code>
+      for each setting received, priority frame received and ping received. If
+      the overhead count exceeds zero, the connection is closed. A value of less
+      than <code>1</code> disables this protection. In normal usage a value of
+      approximately <code>20</code> or higher will close the connection before
+      any streams can complete. If not specified, a default value of
+      <code>10</code> will be used.</p>
+    </attribute>
+
+    <attribute name="overheadDataThreshold" required="false">
+      <p>The threshold below which the average payload size of the current and
+      previous non-final <code>DATA</code> frames will trigger an increase in
+      the overhead count (see <strong>overheadCountFactor</strong>). The
+      overhead count will be increased by
+      <code>overheadDataThreshold/average</code> so that the smaller the
+      average, the greater the increase in the overhead count. A value of zero
+      or less disables the checking of non-final <code>DATA</code> frames. If
+      not specified, a default value of <code>1024</code> will be used.</p>
+    </attribute>
+
+    <attribute name="overheadWindowUpdateThreshold" required="false">
+      <p>The threshold below which the average size of current and previous
+      <code>WINDOW_UPDATE</code> frame will trigger an increase in the overhead
+      count (see <strong>overheadCountFactor</strong>). The overhead count will
+      be increased by <code>overheadWindowUpdateThreshold/average</code> so
+      that the smaller the average, the greater the increase in the overhead
+      count. A value of zero or less disables the checking of
+      <code>WINDOW_UPDATE</code> frames. If not specified, a default value of
+      <code>1024</code> will be used.</p>
     </attribute>
 
     <attribute name="readTimeout" required="false">
@@ -219,7 +269,7 @@
 
     <attribute name="streamWriteTimeout" required="false">
       <p>The time, in milliseconds, that Tomcat will wait for additional window
-      update frames to arrive for the stream and/or conenction when an
+      update frames to arrive for the stream and/or connection when an
       application is performing a blocking I/O write and the stream and/or
       connection flow control window is too small for the write to complete.
       Negative values will be treated as an infinite timeout. If not specified,

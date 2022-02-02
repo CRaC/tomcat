@@ -14,14 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet.jsp.el;
 
 /**
  * Represents any of the exception conditions that arise during the operation
  * evaluation of the evaluator.
  *
- * @since 2.0
+ * @since JSP 2.0
  * @deprecated As of JSP 2.1, replaced by javax.el.ELException
  */
 @SuppressWarnings("dep-ann") // TCK signature test fails with annotation

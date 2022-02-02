@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ant.jmx;
 
 import java.io.IOException;
@@ -23,7 +22,6 @@ import java.net.InetAddress;
 import java.net.MalformedURLException;
 import java.net.UnknownHostException;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -131,7 +129,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return the name used at remote MbeanServer
      */
     public String getName() {
-        return (this.name);
+        return this.name;
     }
 
     public void setName(String objectName) {
@@ -200,7 +198,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The login password for the <code>Manager</code> application.
      */
     public String getPassword() {
-        return (this.password);
+        return this.password;
     }
 
     public void setPassword(String password) {
@@ -211,7 +209,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The login username for the <code>JMX</code> MBeanServer.
      */
     public String getUsername() {
-        return (this.username);
+        return this.username;
     }
 
     public void setUsername(String username) {
@@ -222,7 +220,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The URL of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
     public String getUrl() {
-        return (this.url);
+        return this.url;
     }
 
     public void setUrl(String url) {
@@ -233,7 +231,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The Host of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
     public String getHost() {
-        return (this.host);
+        return this.host;
     }
 
     public void setHost(String host) {
@@ -244,7 +242,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The Port of the <code>JMX JSR 160</code> MBeanServer to be used.
      */
     public String getPort() {
-        return (this.port);
+        return this.port;
     }
 
     public void setPort(String port) {
@@ -255,7 +253,7 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return Returns the useRef.
      */
     public boolean isUseRef() {
-        return ref != null && !"".equals(ref);
+        return ref != null && !ref.isEmpty();
     }
 
     /**
@@ -359,11 +357,11 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             String host, String port, String username, String password)
             throws MalformedURLException, IOException {
         String urlForJMX;
-        if (url != null)
+        if (url != null) {
             urlForJMX = url;
-        else
-            urlForJMX = JMX_SERVICE_PREFIX + host + ":" + port
-                    + JMX_SERVICE_SUFFIX;
+        } else {
+            urlForJMX = JMX_SERVICE_PREFIX + host + ":" + port + JMX_SERVICE_SUFFIX;
+        }
         Map<String, String[]> environment = null;
         if (username != null && password != null) {
             String[] credentials = new String[2];
@@ -514,24 +512,27 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @return The converted object
      */
     protected Object convertStringToType(String value, String valueType) {
-        if ("java.lang.String".equals(valueType))
+        if ("java.lang.String".equals(valueType)) {
             return value;
+        }
 
         Object convertValue = value;
         if ("java.lang.Integer".equals(valueType) || "int".equals(valueType)) {
             try {
                 convertValue = Integer.valueOf(value);
             } catch (NumberFormatException ex) {
-                if (isEcho())
+                if (isEcho()) {
                     handleErrorOutput("Unable to convert to integer:" + value);
+                }
             }
         } else if ("java.lang.Long".equals(valueType)
                 || "long".equals(valueType)) {
             try {
                 convertValue = Long.valueOf(value);
             } catch (NumberFormatException ex) {
-                if (isEcho())
+                if (isEcho()) {
                     handleErrorOutput("Unable to convert to long:" + value);
+                }
             }
         } else if ("java.lang.Boolean".equals(valueType)
                 || "boolean".equals(valueType)) {
@@ -541,32 +542,35 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             try {
                 convertValue = Float.valueOf(value);
             } catch (NumberFormatException ex) {
-                if (isEcho())
+                if (isEcho()) {
                     handleErrorOutput("Unable to convert to float:" + value);
+                }
             }
         } else if ("java.lang.Double".equals(valueType)
                 || "double".equals(valueType)) {
             try {
                 convertValue = Double.valueOf(value);
             } catch (NumberFormatException ex) {
-                if (isEcho())
+                if (isEcho()) {
                     handleErrorOutput("Unable to convert to double:" + value);
+                }
             }
         } else if ("javax.management.ObjectName".equals(valueType)
                 || "name".equals(valueType)) {
             try {
                 convertValue = new ObjectName(value);
             } catch (MalformedObjectNameException e) {
-                if (isEcho())
-                    handleErrorOutput("Unable to convert to ObjectName:"
-                            + value);
+                if (isEcho()) {
+                    handleErrorOutput("Unable to convert to ObjectName:" + value);
+                }
             }
         } else if ("java.net.InetAddress".equals(valueType)) {
             try {
                 convertValue = InetAddress.getByName(value);
             } catch (UnknownHostException exc) {
-                if (isEcho())
+                if (isEcho()) {
                     handleErrorOutput("Unable to resolve host name:" + value);
+                }
             }
         }
         return convertValue;
@@ -582,8 +586,9 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
                 for (int i = 0; i < Array.getLength(result); i++) {
                     handleOutput(name + "." + i + "=" + Array.get(result, i));
                 }
-            } else
+            } else {
                 handleOutput(name + "=" + result);
+            }
         }
     }
 
@@ -611,14 +616,14 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      * @param result The result
      */
     protected void createProperty(String propertyPrefix, Object result) {
-        if (propertyPrefix == null)
+        if (propertyPrefix == null) {
             propertyPrefix = "";
+        }
         if (result instanceof CompositeDataSupport) {
             CompositeDataSupport data = (CompositeDataSupport) result;
             CompositeType compositeType = data.getCompositeType();
             Set<String> keys = compositeType.keySet();
-            for (Iterator<String> iter = keys.iterator(); iter.hasNext();) {
-                String key = iter.next();
+            for (String key : keys) {
                 Object value = data.get(key);
                 OpenType<?> type = compositeType.getType(key);
                 if (type instanceof SimpleType<?>) {
@@ -629,10 +634,8 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
             }
         } else if (result instanceof TabularDataSupport) {
             TabularDataSupport data = (TabularDataSupport) result;
-            for (Iterator<Object> iter = data.keySet().iterator(); iter.hasNext();) {
-                Object key = iter.next();
-                for (Iterator<?> iter1 = ((List<?>) key).iterator(); iter1.hasNext();) {
-                    Object key1 = iter1.next();
+            for (Object key : data.keySet()) {
+                for (Object key1 : ((List<?>) key)) {
                     CompositeData valuedata = data.get(new Object[] { key1 });
                     Object value = valuedata.get("value");
                     OpenType<?> type = valuedata.getCompositeType().getType(
@@ -670,9 +673,9 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
                         size++;
                     }
                 }
-                if (size > 0)
-                    setProperty(propertyPrefix + ".Length", Integer
-                            .toString(size));
+                if (size > 0) {
+                    setProperty(propertyPrefix + ".Length", Integer.toString(size));
+                }
             } else {
                 setProperty(propertyPrefix, result.toString());
             }
@@ -700,8 +703,9 @@ public class JMXAccessorTask extends BaseRedirectorHelperTask {
      */
     public boolean setProperty(String property, Object value) {
         if (property != null) {
-            if (value == null)
+            if (value == null) {
                 value = "";
+            }
             if (isEcho()) {
                 handleOutput(property + "=" + value.toString());
             }

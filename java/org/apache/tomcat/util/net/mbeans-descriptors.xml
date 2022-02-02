@@ -15,6 +15,9 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
+<!DOCTYPE mbeans-descriptors PUBLIC
+   "-//Apache Software Foundation//DTD Model MBeans Configuration File"
+   "http://jakarta.apache.org/commons/dtds/mbeans-descriptors.dtd">
 <mbeans-descriptors>
 
   <mbean         name="NioEndpoint"
@@ -27,7 +30,8 @@
                  type="int"/>
 
     <attribute   name="acceptorThreadCount"
-                 type="int"/>
+                 type="int"
+                 description="Deprecated - do not use"/>
 
     <attribute   name="acceptorThreadPriority"
                  type="int"/>
@@ -250,7 +254,8 @@
                  type="int"/>
 
     <attribute   name="acceptorThreadCount"
-                 type="int"/>
+                 type="int"
+                 description="Deprecated - do not use"/>
 
     <attribute   name="acceptorThreadPriority"
                  type="int"/>
@@ -461,7 +466,8 @@
                  type="int"/>
 
     <attribute   name="acceptorThreadCount"
-                 type="int"/>
+                 type="int"
+                 description="Deprecated - do not use"/>
 
     <attribute   name="acceptorThreadPriority"
                  type="int"/>

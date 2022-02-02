@@ -43,14 +43,18 @@ public abstract class PojoEndpointBase extends Endpoint {
     private static final StringManager sm = StringManager.getManager(PojoEndpointBase.class);
 
     private Object pojo;
-    private Map<String,String> pathParameters;
+    private final Map<String,String> pathParameters;
     private PojoMethodMapping methodMapping;
+
+
+    protected PojoEndpointBase(Map<String,String> pathParameters) {
+        this.pathParameters = pathParameters;
+    }
 
 
     protected final void doOnOpen(Session session, EndpointConfig config) {
         PojoMethodMapping methodMapping = getMethodMapping();
         Object pojo = getPojo();
-        Map<String,String> pathParameters = getPathParameters();
 
         // Add message handlers before calling onOpen since that may trigger a
         // message which in turn could trigger a response and/or close the
@@ -72,14 +76,11 @@ public abstract class PojoEndpointBase extends Endpoint {
                         "pojoEndpointBase.onOpenFail",
                         pojo.getClass().getName()), e);
                 handleOnOpenOrCloseError(session, e);
-                return;
             } catch (InvocationTargetException e) {
                 Throwable cause = e.getCause();
                 handleOnOpenOrCloseError(session, cause);
-                return;
             } catch (Throwable t) {
                 handleOnOpenOrCloseError(session, t);
-                return;
             }
         }
     }
@@ -144,12 +145,6 @@ public abstract class PojoEndpointBase extends Endpoint {
 
     protected Object getPojo() { return pojo; }
     protected void setPojo(Object pojo) { this.pojo = pojo; }
-
-
-    protected Map<String,String> getPathParameters() { return pathParameters; }
-    protected void setPathParameters(Map<String,String> pathParameters) {
-        this.pathParameters = pathParameters;
-    }
 
 
     protected PojoMethodMapping getMethodMapping() { return methodMapping; }

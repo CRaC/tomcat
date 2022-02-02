@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 /**
@@ -50,8 +49,8 @@ public class AttributeParser {
     public static String getUnquoted(String input, char quote,
             boolean isELIgnored, boolean isDeferredSyntaxAllowedAsLiteral,
             boolean strict, boolean quoteAttributeEL) {
-        return (new AttributeParser(input, quote, isELIgnored,
-                isDeferredSyntaxAllowedAsLiteral, strict, quoteAttributeEL)).getUnquoted();
+        return new AttributeParser(input, quote, isELIgnored,
+                isDeferredSyntaxAllowedAsLiteral, strict, quoteAttributeEL).getUnquoted();
     }
 
     /* The quoted input string. */
@@ -90,12 +89,6 @@ public class AttributeParser {
     private final StringBuilder result;
 
 
-    /**
-     * For test purposes.
-     * @param input
-     * @param quote
-     * @param strict
-     */
     private AttributeParser(String input, char quote,
             boolean isELIgnored, boolean isDeferredSyntaxAllowedAsLiteral,
             boolean strict, boolean quoteAttributeEL) {

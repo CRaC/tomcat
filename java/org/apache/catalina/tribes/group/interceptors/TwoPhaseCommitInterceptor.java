@@ -51,8 +51,11 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
         if (okToProcess(msg.getOptions()) ) {
             super.sendMessage(destination, msg, null);
             ChannelMessage confirmation = null;
-            if ( deepclone ) confirmation = (ChannelMessage)msg.deepclone();
-            else confirmation = (ChannelMessage)msg.clone();
+            if ( deepclone ) {
+                confirmation = (ChannelMessage)msg.deepclone();
+            } else {
+                confirmation = (ChannelMessage)msg.clone();
+            }
             confirmation.getMessage().reset();
             UUIDGenerator.randomUUID(false,confirmation.getUniqueId(),0);
             confirmation.getMessage().append(START_DATA,0,START_DATA.length);
@@ -79,7 +82,9 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
                 if ( original != null ) {
                     super.messageReceived(original.msg);
                     messages.remove(id);
-                } else log.warn(sm.getString("twoPhaseCommitInterceptor.originalMessage.missing", Arrays.toString(id.getBytes())));
+                } else {
+                    log.warn(sm.getString("twoPhaseCommitInterceptor.originalMessage.missing", Arrays.toString(id.getBytes())));
+                }
             } else {
                 UniqueId id = new UniqueId(msg.getUniqueId());
                 MapEntry entry = new MapEntry((ChannelMessage)msg.deepclone(),id,System.currentTimeMillis());
@@ -111,12 +116,13 @@ public class TwoPhaseCommitInterceptor extends ChannelInterceptorBase {
         try {
             long now = System.currentTimeMillis();
             @SuppressWarnings("unchecked")
-            Map.Entry<UniqueId,MapEntry>[] entries = messages.entrySet().toArray(new Map.Entry[messages.size()]);
-            for (int i=0; i<entries.length; i++ ) {
-                MapEntry entry = entries[i].getValue();
-                if ( entry.expired(now,expire) ) {
-                    if(log.isInfoEnabled())
-                        log.info("Message ["+entry.id+"] has expired. Removing.");
+            Map.Entry<UniqueId,MapEntry>[] entries = messages.entrySet().toArray(new Map.Entry[0]);
+            for (Map.Entry<UniqueId, MapEntry> uniqueIdMapEntryEntry : entries) {
+                MapEntry entry = uniqueIdMapEntryEntry.getValue();
+                if (entry.expired(now,expire)) {
+                    if (log.isInfoEnabled()) {
+                        log.info("Message [" + entry.id + "] has expired. Removing.");
+                    }
                     messages.remove(entry.id);
                 }//end if
             }

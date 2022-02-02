@@ -59,6 +59,11 @@ public class OutputBuffer extends Writer {
     private final Map<Charset, C2BConverter> encoders = new HashMap<>();
 
 
+    /**
+     * Default buffer size.
+     */
+    private final int defaultBufferSize;
+
     // ----------------------------------------------------- Instance Variables
 
     /**
@@ -129,7 +134,6 @@ public class OutputBuffer extends Writer {
 
     // ----------------------------------------------------------- Constructors
 
-
     /**
      * Default constructor. Allocate the buffer with the default buffer size.
      */
@@ -141,22 +145,20 @@ public class OutputBuffer extends Writer {
 
 
     /**
-     * Alternate constructor which allows specifying the initial buffer size.
+     * Create the buffer with the specified initial size.
      *
      * @param size Buffer size to use
      */
     public OutputBuffer(int size) {
-
+        defaultBufferSize = size;
         bb = ByteBuffer.allocate(size);
         clear(bb);
         cb = CharBuffer.allocate(size);
         clear(cb);
-
     }
 
 
     // ------------------------------------------------------------- Properties
-
 
     /**
      * Associated Coyote response.
@@ -209,6 +211,10 @@ public class OutputBuffer extends Writer {
         bytesWritten = 0;
         charsWritten = 0;
 
+        if (bb.capacity() > 16 * defaultBufferSize) {
+            // Discard buffers which are too large
+            bb = ByteBuffer.allocate(defaultBufferSize);
+        }
         clear(bb);
         clear(cb);
         closed = false;
@@ -361,6 +367,7 @@ public class OutputBuffer extends Writer {
                 // An IOException on a write is almost always due to
                 // the remote client aborting the request. Wrap this
                 // so that it can be handled better by the error dispatcher.
+                coyoteResponse.setErrorException(e);
                 throw new ClientAbortException(e);
             }
         }
@@ -538,7 +545,7 @@ public class OutputBuffer extends Writer {
         while (sOff < sEnd) {
             int n = transfer(s, sOff, sEnd - sOff, cb);
             sOff += n;
-            if (isFull(cb)) {
+            if (sOff < sEnd && isFull(cb)) {
                 flushCharBuffer();
             }
         }
@@ -584,6 +591,11 @@ public class OutputBuffer extends Writer {
         }
 
         if (charset == null) {
+            if (coyoteResponse.getCharacterEncoding() != null) {
+                // setCharacterEncoding() was called with an invalid character set
+                // Trigger an UnsupportedEncodingException
+                charset = B2CConverter.getCharset(coyoteResponse.getCharacterEncoding());
+            }
             if (enc == null) {
                 charset = org.apache.coyote.Constants.DEFAULT_BODY_CHARSET;
             } else {
@@ -734,7 +746,7 @@ public class OutputBuffer extends Writer {
             int n = transfer(src, off, len, bb);
             len = len - n;
             off = off + n;
-            if (isFull(bb)) {
+            if (len > 0 && isFull(bb)) {
                 flushByteBuffer();
                 appendByteArray(src, off, len);
             }
@@ -786,7 +798,7 @@ public class OutputBuffer extends Writer {
             appendByteBuffer(from);
         } else {
             transfer(from, bb);
-            if (isFull(bb)) {
+            if (from.hasRemaining() && isFull(bb)) {
                 flushByteBuffer();
                 appendByteBuffer(from);
             }
@@ -799,7 +811,7 @@ public class OutputBuffer extends Writer {
         }
 
         int limit = bb.capacity();
-        while (len >= limit) {
+        while (len > limit) {
             realWriteBytes(ByteBuffer.wrap(src, off, limit));
             len = len - limit;
             off = off + limit;
@@ -817,7 +829,7 @@ public class OutputBuffer extends Writer {
 
         int limit = bb.capacity();
         int fromLimit = from.limit();
-        while (from.remaining() >= limit) {
+        while (from.remaining() > limit) {
             from.limit(from.position() + limit);
             realWriteBytes(from.slice());
             from.position(from.limit());

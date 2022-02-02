@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 import java.util.HashMap;
@@ -36,7 +34,11 @@ public class SetAllPropertiesRule extends Rule {
     public SetAllPropertiesRule() {}
 
     public SetAllPropertiesRule(String[] exclude) {
-        for (int i=0; i<exclude.length; i++ ) if (exclude[i]!=null) this.excludes.put(exclude[i],exclude[i]);
+        for (String s : exclude) {
+            if (s != null) {
+                this.excludes.put(s, s);
+            }
+        }
     }
 
     // ----------------------------------------------------- Instance Variables

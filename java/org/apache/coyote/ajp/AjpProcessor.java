@@ -23,13 +23,19 @@ import java.io.InterruptedIOException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.security.NoSuchProviderException;
+import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.coyote.AbstractProcessor;
 import org.apache.coyote.ActionCode;
+import org.apache.coyote.ContinueResponseTiming;
 import org.apache.coyote.ErrorState;
 import org.apache.coyote.InputBuffer;
 import org.apache.coyote.OutputBuffer;
@@ -79,6 +85,10 @@ public class AjpProcessor extends AbstractProcessor {
     private static final byte[] pongMessageArray;
 
 
+    private static final Set<String> javaxAttributes;
+    private static final Set<String> iisTlsAttributes;
+
+
     static {
         // Allocate the end message array
         AjpMessage endMessage = new AjpMessage(16);
@@ -119,6 +129,26 @@ public class AjpProcessor extends AbstractProcessor {
         pongMessageArray = new byte[pongMessage.getLen()];
         System.arraycopy(pongMessage.getBuffer(), 0, pongMessageArray,
                 0, pongMessage.getLen());
+
+        // Build the Set of javax attributes
+        Set<String> s = new HashSet<>();
+        s.add("javax.servlet.request.cipher_suite");
+        s.add("javax.servlet.request.key_size");
+        s.add("javax.servlet.request.ssl_session");
+        s.add("javax.servlet.request.X509Certificate");
+        javaxAttributes= Collections.unmodifiableSet(s);
+
+        Set<String> iis = new HashSet<>();
+        iis.add("CERT_ISSUER");
+        iis.add("CERT_SUBJECT");
+        iis.add("CERT_COOKIE");
+        iis.add("HTTPS_SERVER_SUBJECT");
+        iis.add("CERT_FLAGS");
+        iis.add("HTTPS_SECRETKEYSIZE");
+        iis.add("CERT_SERIALNUMBER");
+        iis.add("HTTPS_SERVER_ISSUER");
+        iis.add("HTTPS_KEYSIZE");
+        iisTlsAttributes = Collections.unmodifiableSet(iis);
     }
 
 
@@ -322,9 +352,13 @@ public class AjpProcessor extends AbstractProcessor {
     /**
      * Required secret.
      */
-    private String requiredSecret = null;
+    private String secret = null;
+    @Deprecated
     public void setRequiredSecret(String requiredSecret) {
-        this.requiredSecret = requiredSecret;
+        setSecret(requiredSecret);
+    }
+    public void setSecret(String secret) {
+        this.secret = secret;
     }
 
 
@@ -340,6 +374,7 @@ public class AjpProcessor extends AbstractProcessor {
         this.clientCertProvider = clientCertProvider;
     }
 
+
     @Deprecated
     private boolean sendReasonPhrase = false;
     @Deprecated
@@ -347,6 +382,11 @@ public class AjpProcessor extends AbstractProcessor {
         this.sendReasonPhrase = sendReasonPhrase;
     }
 
+
+    private Pattern allowedRequestAttributesPattern;
+    public void setAllowedRequestAttributesPattern(Pattern allowedRequestAttributesPattern) {
+        this.allowedRequestAttributesPattern = allowedRequestAttributesPattern;
+    }
 
     // --------------------------------------------------------- Public Methods
 
@@ -380,7 +420,11 @@ public class AjpProcessor extends AbstractProcessor {
             socketWrapper.setReadTimeout(keepAliveTimeout);
         }
         recycle();
-        return SocketState.OPEN;
+        if (endpoint.isPaused()) {
+            return SocketState.CLOSED;
+        } else {
+            return SocketState.OPEN;
+        }
     }
 
 
@@ -395,20 +439,24 @@ public class AjpProcessor extends AbstractProcessor {
 
         int soTimeout = endpoint.getConnectionTimeout();
         boolean cping = false;
-
-        boolean keptAlive = false;
+        // Expected to block on the first read as there should be at least one
+        // AJP message to read.
+        boolean firstRead = true;
 
         while (!getErrorState().isError() && !endpoint.isPaused()) {
             // Parsing the request header
             try {
                 // Get first message of the request
-                if (!readMessage(requestHeaderMessage, !keptAlive)) {
+                if (!readMessage(requestHeaderMessage, firstRead)) {
                     break;
                 }
+                firstRead = false;
+
                 // Set back timeout if keep alive timeout is enabled
                 if (keepAliveTimeout > 0) {
                     socketWrapper.setReadTimeout(soTimeout);
                 }
+
                 // Check message type, process right away and break if
                 // not regular request processing
                 int type = requestHeaderMessage.getByte();
@@ -422,6 +470,9 @@ public class AjpProcessor extends AbstractProcessor {
                         socketWrapper.write(true, pongMessageArray, 0, pongMessageArray.length);
                         socketWrapper.flush(true);
                     } catch (IOException e) {
+                        if (getLog().isDebugEnabled()) {
+                            getLog().debug("Pong message failed", e);
+                        }
                         setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
                     }
                     recycle();
@@ -435,7 +486,6 @@ public class AjpProcessor extends AbstractProcessor {
                     setErrorState(ErrorState.CLOSE_CONNECTION_NOW, null);
                     break;
                 }
-                keptAlive = true;
                 request.setStartTime(System.currentTimeMillis());
             } catch (IOException e) {
                 setErrorState(ErrorState.CLOSE_CONNECTION_NOW, e);
@@ -625,8 +675,7 @@ public class AjpProcessor extends AbstractProcessor {
         else if (messageLength == 0) {
             // Zero length message.
             return true;
-        }
-        else {
+        } else {
             if (messageLength > message.getBuffer().length) {
                 // Message too long for the buffer
                 // Need to trigger a 400 response
@@ -710,6 +759,10 @@ public class AjpProcessor extends AbstractProcessor {
         requestHeaderMessage.getBytes(request.localName());
         request.setLocalPort(requestHeaderMessage.getInt());
 
+        if (socketWrapper != null) {
+            request.peerAddr().setString(socketWrapper.getRemoteAddr());
+        }
+
         boolean isSSL = requestHeaderMessage.getByte() != 0;
         if (isSSL) {
             request.scheme().setString("https");
@@ -776,7 +829,7 @@ public class AjpProcessor extends AbstractProcessor {
         }
 
         // Decode extra attributes
-        boolean secret = false;
+        boolean secretPresentInRequest = false;
         byte attributeCode;
         while ((attributeCode = requestHeaderMessage.getByte())
                 != Constants.SC_A_ARE_DONE) {
@@ -805,8 +858,24 @@ public class AjpProcessor extends AbstractProcessor {
                     }
                 } else if(n.equals(Constants.SC_A_SSL_PROTOCOL)) {
                     request.setAttribute(SSLSupport.PROTOCOL_VERSION_KEY, v);
+                } else if (n.equals("JK_LB_ACTIVATION")) {
+                    request.setAttribute(n, v);
+                } else if (javaxAttributes.contains(n)) {
+                    request.setAttribute(n, v);
+                } else if (iisTlsAttributes.contains(n)) {
+                    // Allow IIS TLS attributes
+                    request.setAttribute(n, v);
                 } else {
-                    request.setAttribute(n, v );
+                    // All 'known' attributes will be processed by the previous
+                    // blocks. Any remaining attribute is an 'arbitrary' one.
+                    if (allowedRequestAttributesPattern != null &&
+                            allowedRequestAttributesPattern.matcher(n).matches()) {
+                        request.setAttribute(n, v);
+                    } else {
+                        log.warn(sm.getString("ajpprocessor.unknownAttribute", n));
+                        response.setStatus(403);
+                        setErrorState(ErrorState.CLOSE_CLEAN, null);
+                    }
                 }
                 break;
 
@@ -877,9 +946,9 @@ public class AjpProcessor extends AbstractProcessor {
 
             case Constants.SC_A_SECRET:
                 requestHeaderMessage.getBytes(tmpMB);
-                if (requiredSecret != null) {
-                    secret = true;
-                    if (!tmpMB.equals(requiredSecret)) {
+                if (secret != null && secret.length() > 0) {
+                    secretPresentInRequest = true;
+                    if (!tmpMB.equals(secret)) {
                         response.setStatus(403);
                         setErrorState(ErrorState.CLOSE_CLEAN, null);
                     }
@@ -895,7 +964,7 @@ public class AjpProcessor extends AbstractProcessor {
         }
 
         // Check if secret was submitted if required
-        if ((requiredSecret != null) && !secret) {
+        if (secret != null && secret.length() > 0 && !secretPresentInRequest) {
             response.setStatus(403);
             setErrorState(ErrorState.CLOSE_CLEAN, null);
         }
@@ -1045,8 +1114,7 @@ public class AjpProcessor extends AbstractProcessor {
             int hC = Constants.getResponseAjpIndex(hN.toString());
             if (hC > 0) {
                 responseMessage.appendInt(hC);
-            }
-            else {
+            } else {
                 responseMessage.appendBytes(hN);
             }
             MessageBytes hV=headers.getValue(i);
@@ -1083,8 +1151,9 @@ public class AjpProcessor extends AbstractProcessor {
      */
     @Override
     protected final void finishResponse() throws IOException {
-        if (responseFinished)
+        if (responseFinished) {
             return;
+        }
 
         responseFinished = true;
 
@@ -1104,7 +1173,7 @@ public class AjpProcessor extends AbstractProcessor {
 
 
     @Override
-    protected final void ack() {
+    protected final void ack(ContinueResponseTiming continueResponseTiming) {
         // NO-OP for AJP
     }
 
@@ -1127,7 +1196,7 @@ public class AjpProcessor extends AbstractProcessor {
         if (empty) {
             return 0;
         } else {
-            return bodyBytes.getByteChunk().getLength();
+            return request.getInputBuffer().available();
         }
     }
 
@@ -1214,10 +1283,7 @@ public class AjpProcessor extends AbstractProcessor {
                         jsseCerts = temp;
                     }
                 }
-            } catch (java.security.cert.CertificateException e) {
-                getLog().error(sm.getString("ajpprocessor.certs.fail"), e);
-                return;
-            } catch (NoSuchProviderException e) {
+            } catch (CertificateException | NoSuchProviderException e) {
                 getLog().error(sm.getString("ajpprocessor.certs.fail"), e);
                 return;
             }
@@ -1257,7 +1323,7 @@ public class AjpProcessor extends AbstractProcessor {
      *              called, should this call block until data becomes available?
      * @return  <code>true</code> if the requested number of bytes were read
      *          else <code>false</code>
-     * @throws IOException
+     * @throws IOException If an I/O error occurs during the read
      */
     private boolean read(byte[] buf, int pos, int n, boolean block) throws IOException {
         int read = socketWrapper.read(block, buf, pos, n);
@@ -1392,6 +1458,15 @@ public class AjpProcessor extends AbstractProcessor {
             handler.setByteBuffer(ByteBuffer.wrap(bc.getBuffer(), bc.getStart(), bc.getLength()));
             empty = true;
             return handler.getByteBuffer().remaining();
+        }
+
+        @Override
+        public int available() {
+            if (empty) {
+                return 0;
+            } else {
+                return bodyBytes.getByteChunk().getLength();
+            }
         }
     }
 

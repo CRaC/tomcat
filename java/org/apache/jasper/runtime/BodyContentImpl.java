@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.runtime;
 
 import java.io.CharArrayReader;
@@ -28,6 +27,7 @@ import javax.servlet.jsp.JspWriter;
 import javax.servlet.jsp.tagext.BodyContent;
 
 import org.apache.jasper.Constants;
+import org.apache.jasper.compiler.Localizer;
 
 /**
  * Write text to a character-output stream, buffering characters so as
@@ -145,8 +145,9 @@ public class BodyContentImpl extends BodyContent {
                 return;
             }
 
-            if (len >= bufferSize - nextChar)
+            if (len >= bufferSize - nextChar) {
                 reAllocBuff (len);
+            }
 
             System.arraycopy(cbuf, off, cb, nextChar, len);
             nextChar+=len;
@@ -182,8 +183,9 @@ public class BodyContentImpl extends BodyContent {
             writer.write(s, off, len);
         } else {
             ensureOpen();
-            if (len >= bufferSize - nextChar)
+            if (len >= bufferSize - nextChar) {
                 reAllocBuff(len);
+            }
 
             s.getChars(off, off + len, cb, nextChar);
             nextChar += len;
@@ -207,8 +209,8 @@ public class BodyContentImpl extends BodyContent {
 
     /**
      * Write a line separator.  The line separator string is defined by the
-     * system property <tt>line.separator</tt>, and is not necessarily a single
-     * newline ('\n') character.
+     * system property <code>line.separator</code>, and is not necessarily a
+     * single newline ('\n') character.
      *
      * @throws IOException Error writing to wrapped writer
      */
@@ -366,7 +368,9 @@ public class BodyContentImpl extends BodyContent {
      */
     @Override
     public void print(String s) throws IOException {
-        if (s == null) s = "null";
+        if (s == null) {
+            s = "null";
+        }
         if (writer != null) {
             writer.write(s);
         } else {
@@ -680,7 +684,9 @@ public class BodyContentImpl extends BodyContent {
     }
 
     private void ensureOpen() throws IOException {
-        if (closed) throw new IOException("Stream closed");
+        if (closed) {
+            throw new IOException(Localizer.getMessage("jsp.error.stream.closed"));
+        }
     }
 
     /**

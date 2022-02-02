@@ -52,6 +52,14 @@ public class TestHttp2Section_5_3 extends Http2TestBase {
 
         http2Connect();
 
+        // This test uses small window updates that will trigger the excessive
+        // overhead protection so disable it.
+        http2Protocol.setOverheadWindowUpdateThreshold(0);
+        // May also see (rarely, depends on timing) sequential 1 byte data
+        // frames on the same Stream
+        http2Protocol.setOverheadDataThreshold(0);
+
+
         // Default connection window size is 64k - 1. Initial request will have
         // used 8k (56k -1). Increase it to 57k
         sendWindowUpdate(0, 1 + 1024);
@@ -160,14 +168,19 @@ public class TestHttp2Section_5_3 extends Http2TestBase {
                 Assert.fail("Unexpected stream: [" + output.getTrace() + "]");
             }
             // A value of more than 1 here is unlikely but possible depending on
-            // how threads are scheduled. This has been observed as high as 12
-            // on ci.apache.org so allow a margin and use 20.
-            if (data[1] > 20) {
+            // how threads are scheduled. This has been observed as high as 21
+            // on ci.apache.org so allow a margin and use 30.
+            if (data[1] > 30) {
                 // Larger than expected body size
-                Assert.fail("Larger than expected body: [" + output.getTrace() + "]");
+                Assert.fail("Larger than expected body: [" + output.getTrace() + "] " + data[1]);
             }
             output.clearTrace();
         }
+
+        // Need to give both server side threads enough time to request an
+        // allocation from the connection flow control window before sending
+        // the next window update.
+        Thread.sleep(1000);
 
         sendWindowUpdate(0, 1024);
         parser.readFrame(true);

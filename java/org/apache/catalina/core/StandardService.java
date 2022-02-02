@@ -51,6 +51,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class StandardService extends LifecycleMBeanBase implements Service {
 
     private static final Log log = LogFactory.getLog(StandardService.class);
+    private static final StringManager sm = StringManager.getManager(StandardService.class);
 
 
     // ----------------------------------------------------- Instance Variables
@@ -60,12 +61,6 @@ public class StandardService extends LifecycleMBeanBase implements Service {
      */
     private String name = null;
 
-
-    /**
-     * The string manager for this package.
-     */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
 
     /**
      * The <code>Server</code> that owns this Service, if any.
@@ -85,7 +80,7 @@ public class StandardService extends LifecycleMBeanBase implements Service {
     private final Object connectorsLock = new Object();
 
     /**
-     *
+     * The list of executors held by the service.
      */
     protected final ArrayList<Executor> executors = new ArrayList<>();
 
@@ -283,8 +278,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
                     break;
                 }
             }
-            if (j < 0)
+            if (j < 0) {
                 return;
+            }
             if (connectors[j].getState().isAvailable()) {
                 try {
                     connectors[j].stop();
@@ -298,8 +294,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
             int k = 0;
             Connector results[] = new Connector[connectors.length - 1];
             for (int i = 0; i < connectors.length; i++) {
-                if (i != j)
+                if (i != j) {
                     results[k++] = connectors[i];
+                }
             }
             connectors = results;
 
@@ -326,8 +323,8 @@ public class StandardService extends LifecycleMBeanBase implements Service {
     public String toString() {
         StringBuilder sb = new StringBuilder("StandardService[");
         sb.append(getName());
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -344,7 +341,7 @@ public class StandardService extends LifecycleMBeanBase implements Service {
                     try {
                         ex.start();
                     } catch (LifecycleException x) {
-                        log.error("Executor.start", x);
+                        log.error(sm.getString("standardService.executor.start"), x);
                     }
                 }
             }
@@ -375,8 +372,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
     public Executor getExecutor(String executorName) {
         synchronized (executors) {
             for (Executor executor: executors) {
-                if (executorName.equals(executor.getName()))
+                if (executorName.equals(executor.getName())) {
                     return executor;
+                }
             }
         }
         return null;
@@ -394,7 +392,7 @@ public class StandardService extends LifecycleMBeanBase implements Service {
                 try {
                     ex.stop();
                 } catch (LifecycleException e) {
-                    log.error("Executor.stop", e);
+                    log.error(sm.getString("standardService.executor.stop"), e);
                 }
             }
         }
@@ -412,8 +410,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
     @Override
     protected void startInternal() throws LifecycleException {
 
-        if(log.isInfoEnabled())
+        if(log.isInfoEnabled()) {
             log.info(sm.getString("standardService.start.name", this.name));
+        }
         setState(LifecycleState.STARTING);
 
         // Start our defined Container first
@@ -476,8 +475,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
             }
         }
 
-        if(log.isInfoEnabled())
+        if(log.isInfoEnabled()) {
             log.info(sm.getString("standardService.stop.name", this.name));
+        }
         setState(LifecycleState.STOPPING);
 
         // Stop our defined Container second
@@ -555,8 +555,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
                             "standardService.connector.initFailed", connector);
                     log.error(message, e);
 
-                    if (Boolean.getBoolean("org.apache.catalina.startup.EXIT_ON_INIT_FAILURE"))
+                    if (Boolean.getBoolean("org.apache.catalina.startup.EXIT_ON_INIT_FAILURE")) {
                         throw new LifecycleException(message);
+                    }
                 }
             }
         }
@@ -597,8 +598,9 @@ public class StandardService extends LifecycleMBeanBase implements Service {
      */
     @Override
     public ClassLoader getParentClassLoader() {
-        if (parentClassLoader != null)
+        if (parentClassLoader != null) {
             return parentClassLoader;
+        }
         if (server != null) {
             return server.getParentClassLoader();
         }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ssi;
 
 import java.io.IOException;
@@ -32,7 +31,7 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import org.apache.tomcat.util.ExceptionUtils;
 
 /**
- * A HttpServletResponseWrapper, used from
+ * An HttpServletResponseWrapper, used from
  * <code>SSIServletExternalResolver</code>
  *
  * @author Bip Thelin

@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
 import java.util.ArrayList;
@@ -40,8 +39,7 @@ import org.apache.tomcat.util.res.StringManager;
 public class OpenSSLCipherConfigurationParser {
 
     private static final Log log = LogFactory.getLog(OpenSSLCipherConfigurationParser.class);
-    private static final StringManager sm =
-            StringManager.getManager("org.apache.tomcat.util.net.jsse.res");
+    private static final StringManager sm = StringManager.getManager(OpenSSLCipherConfigurationParser.class);
 
     private static boolean initialized = false;
 
@@ -183,10 +181,6 @@ public class OpenSSLCipherConfigurationParser {
      * Cipher suites using authenticated ephemeral ECDH key agreement
      */
     private static final String ECDHE = "ECDHE";
-    /**
-     * Cipher suites using authenticated ephemeral ECDH key agreement
-     */
-    private static final String EECDHE = "EECDHE";
     /**
      * Anonymous Elliptic Curve Diffie Hellman cipher suites.
      */
@@ -472,7 +466,6 @@ public class OpenSSLCipherConfigurationParser {
         addListAlias(ECDHE, ecdhe);
 
         addListAlias(kEECDH, filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EECDH)));
-        aliases.put(EECDHE, aliases.get(kEECDH));
         Set<Cipher> eecdh = filterByKeyExchange(allCiphers, Collections.singleton(KeyExchange.EECDH));
         eecdh.removeAll(filterByAuthentication(allCiphers, Collections.singleton(Authentication.aNULL)));
         addListAlias(EECDH, eecdh);
@@ -732,7 +725,7 @@ public class OpenSSLCipherConfigurationParser {
                 if (aliases.containsKey(alias)) {
                     removedCiphers.addAll(aliases.get(alias));
                 } else {
-                    log.warn(sm.getString("jsse.openssl.unknownElement", alias));
+                    log.warn(sm.getString("opensslCipherConfigurationParser.unknownElement", alias));
                 }
             } else if (element.startsWith(TO_END)) {
                 String alias = element.substring(1);
@@ -767,7 +760,7 @@ public class OpenSSLCipherConfigurationParser {
             result.addAll(cipher.getJsseNames());
         }
         if (log.isDebugEnabled()) {
-            log.debug(sm.getString("jsse.openssl.effectiveCiphers", displayResult(ciphers, true, ",")));
+            log.debug(sm.getString("opensslCipherConfigurationParser.effectiveCiphers", displayResult(ciphers, true, ",")));
         }
         return result;
     }
@@ -839,5 +832,79 @@ public class OpenSSLCipherConfigurationParser {
             builder.append(separator);
         }
         return builder.toString().substring(0, builder.length() - 1);
+    }
+
+    public static void usage() {
+        System.out.println("Usage: java " + OpenSSLCipherConfigurationParser.class.getName() + " [options] cipherspec");
+        System.out.println();
+        System.out.println("Displays the TLS cipher suites matching the cipherspec.");
+        System.out.println();
+        System.out.println(" --help,");
+        System.out.println(" -h          Print this help message");
+        System.out.println(" --openssl   Show OpenSSL cipher suite names instead of IANA cipher suite names.");
+        System.out.println(" --verbose,");
+        System.out.println(" -v          Provide detailed cipher listing");
+    }
+
+    public static void main(String[] args) throws Exception
+    {
+        boolean verbose = false;
+        boolean useOpenSSLNames = false;
+        int argindex;
+        for(argindex = 0; argindex < args.length; ++argindex)
+        {
+            String arg = args[argindex];
+            if("--verbose".equals(arg) || "-v".equals(arg)) {
+                verbose = true;
+            } else if("--openssl".equals(arg)) {
+                useOpenSSLNames = true;
+            } else if("--help".equals(arg) || "-h".equals(arg)) {
+                usage();
+                System.exit(0);
+            }
+            else if("--".equals(arg)) {
+                ++argindex;
+                break;
+            } else if(arg.startsWith("-")) {
+                System.out.println("Unknown option: " + arg);
+                usage();
+                System.exit(1);
+            } else {
+                // Non-switch argument... probably the cipher spec
+                break;
+            }
+        }
+
+        String cipherSpec;
+        if(argindex < args.length) {
+            cipherSpec = args[argindex];
+        } else {
+            cipherSpec = "DEFAULT";
+        }
+        Set<Cipher> ciphers = parse(cipherSpec);
+        boolean first = true;
+        if(null != ciphers && 0 < ciphers.size()) {
+            for(Cipher cipher : ciphers)
+            {
+                if(first) {
+                    first = false;
+                } else {
+                    if(!verbose) {
+                        System.out.print(',');
+                    }
+                }
+                if(useOpenSSLNames) {
+                    System.out.print(cipher.getOpenSSLAlias());
+                } else {
+                    System.out.print(cipher.name());
+                }
+                if(verbose) {
+                    System.out.println("\t" + cipher.getProtocol() + "\tKx=" + cipher.getKx() + "\tAu=" + cipher.getAu() + "\tEnc=" + cipher.getEnc() + "\tMac=" + cipher.getMac());
+                }
+            }
+            System.out.println();
+        } else {
+            System.out.println("No ciphers match '" + cipherSpec + "'");
+        }
     }
 }

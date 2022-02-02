@@ -106,10 +106,11 @@ public class LookupFactory implements ObjectFactory {
                     }
                     if (factoryClass != null) {
                         try {
-                            factory = (ObjectFactory) factoryClass.newInstance();
+                            factory = (ObjectFactory) factoryClass.getConstructor().newInstance();
                         } catch (Throwable t) {
-                            if (t instanceof NamingException)
+                            if (t instanceof NamingException) {
                                 throw (NamingException) t;
+                            }
                             NamingException ex = new NamingException(
                                     sm.getString("lookupFactory.createFailed"));
                             ex.initCause(t);
@@ -134,6 +135,14 @@ public class LookupFactory implements ObjectFactory {
                             name, ref.getClassName(), lookupName, result.getClass().getName());
                     NamingException ne = new NamingException(msg);
                     log.warn(msg, ne);
+                    // Close the resource we no longer need if we know how to do so
+                    if (result instanceof AutoCloseable) {
+                        try {
+                            ((AutoCloseable) result).close();
+                        } catch (Exception e) {
+                            // Ignore
+                        }
+                    }
                     throw ne;
                 }
             } finally {

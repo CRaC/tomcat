@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet.http;
 
 import java.io.IOException;
@@ -289,8 +288,9 @@ public interface HttpServletRequest extends ServletRequest {
      * Returns the part of this request's URL from the protocol name up to the
      * query string in the first line of the HTTP request. The web container
      * does not decode this String. For example:
-     * <table summary="Examples of Returned Values">
-     * <tr align=left>
+     * <table>
+     * <caption>Examples of Returned Values</caption>
+     * <tr>
      * <th>First line of HTTP request</th>
      * <th>Returned Value</th>
      * <tr>
@@ -307,7 +307,7 @@ public interface HttpServletRequest extends ServletRequest {
      * <td>/xyz
      * </table>
      * <p>
-     * To reconstruct an URL with a scheme and host, use
+     * To reconstruct a URL with a scheme and host, use
      * {@link #getRequestURL}.
      *
      * @return a <code>String</code> containing the part of the URL from the
@@ -512,12 +512,11 @@ public interface HttpServletRequest extends ServletRequest {
             ServletException;
 
     /**
-     * Start the HTTP upgrade process and pass the connection to the provided
-     * protocol handler once the current request/response pair has completed
-     * processing. Calling this method sets the response status to {@link
-     * HttpServletResponse#SC_SWITCHING_PROTOCOLS} and flushes the response.
-     * Protocol specific headers must have already been set before this method
-     * is called.
+     * Start the HTTP upgrade process and create and instance of the provided
+     * protocol handler class. The connection will be passed this instance once
+     * the current request/response pair has completed processing. Calling this
+     * method sets the response status to
+     * {@link HttpServletResponse#SC_SWITCHING_PROTOCOLS}.
      *
      * @param <T>                     The type of the upgrade handler
      * @param httpUpgradeHandlerClass The class that implements the upgrade

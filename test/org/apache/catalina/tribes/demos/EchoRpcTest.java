@@ -81,8 +81,8 @@ public class EchoRpcTest implements RpcCallback, Runnable {
                 long start = System.currentTimeMillis();
                 Response[] resp = rpc.send(channel.getMembers(),msg,options,Channel.SEND_OPTIONS_DEFAULT,timeout);
                 System.out.println("Send of ["+msg+"] completed. Nr of responses="+resp.length+" Time:"+(System.currentTimeMillis()-start)+" ms.");
-                for ( int i=0; i<resp.length; i++ ) {
-                    System.out.println("Received a response message from ["+resp[i].getSource().getName()+"] with data ["+resp[i].getMessage()+"]");
+                for (Response response : resp) {
+                    System.out.println("Received a response message from [" + response.getSource().getName() + "] with data [" + response.getMessage() + "]");
                 }
                 Thread.sleep(pause);
             }catch(Exception x){
@@ -145,9 +145,13 @@ public class EchoRpcTest implements RpcCallback, Runnable {
                 } else if ("-name".equals(args[i])) {
                     name = args[++i];
                 } else if ("-mode".equals(args[i])) {
-                    if ( "all".equals(args[++i]) ) options = RpcChannel.ALL_REPLY;
-                    else if ( "first".equals(args[i]) ) options = RpcChannel.FIRST_REPLY;
-                    else if ( "majority".equals(args[i]) ) options = RpcChannel.MAJORITY_REPLY;
+                    if ( "all".equals(args[++i]) ) {
+                      options = RpcChannel.ALL_REPLY;
+                    } else if ( "first".equals(args[i]) ) {
+                      options = RpcChannel.FIRST_REPLY;
+                    } else if ( "majority".equals(args[i]) ) {
+                      options = RpcChannel.MAJORITY_REPLY;
+                    }
                 } else if ("-debug".equals(args[i])) {
                     // Not used
                 } else if ("-help".equals(args[i])) {

@@ -221,9 +221,9 @@ class TagLibraryInfoImpl extends TagLibraryInfo implements TagConstants {
                 err.jspError("jsp.error.tld.mandatory.element.missing", "jsp-version", uri);
             }
 
-            this.tags = tagInfos.toArray(new TagInfo[tagInfos.size()]);
-            this.tagFiles = tagFileInfos.toArray(new TagFileInfo[tagFileInfos.size()]);
-            this.functions = functionInfos.toArray(new FunctionInfo[functionInfos.size()]);
+            this.tags = tagInfos.toArray(new TagInfo[0]);
+            this.tagFiles = tagFileInfos.toArray(new TagFileInfo[0]);
+            this.functions = functionInfos.toArray(new FunctionInfo[0]);
         } catch (IOException ioe) {
             throw new JasperException(ioe);
         }
@@ -232,7 +232,7 @@ class TagLibraryInfoImpl extends TagLibraryInfo implements TagConstants {
     @Override
     public TagLibraryInfo[] getTagLibraryInfos() {
         Collection<TagLibraryInfo> coll = pi.getTaglibs();
-        return coll.toArray(new TagLibraryInfo[coll.size()]);
+        return coll.toArray(new TagLibraryInfo[0]);
     }
 
     /*
@@ -305,14 +305,15 @@ class TagLibraryInfoImpl extends TagLibraryInfo implements TagConstants {
                 tagXml.getInfo(),
                 this,
                 tei,
-                attributeInfos.toArray(new TagAttributeInfo[attributeInfos.size()]),
+                attributeInfos.toArray(new TagAttributeInfo[0]),
                 tagXml.getDisplayName(),
                 tagXml.getSmallIcon(),
                 tagXml.getLargeIcon(),
-                variableInfos.toArray(new TagVariableInfo[variableInfos.size()]),
+                variableInfos.toArray(new TagVariableInfo[0]),
                 tagXml.hasDynamicAttributes());
     }
 
+    @SuppressWarnings("null") // Impossible for path to be null at warning
     private TagFileInfo createTagFileInfo(TagFileXml tagFileXml, Jar jar) throws JasperException {
 
         String name = tagFileXml.getName();
@@ -323,6 +324,13 @@ class TagLibraryInfoImpl extends TagLibraryInfo implements TagConstants {
             err.jspError("jsp.error.tagfile.missingPath");
         } else if (!path.startsWith("/META-INF/tags") && !path.startsWith("/WEB-INF/tags")) {
             err.jspError("jsp.error.tagfile.illegalPath", path);
+        }
+
+        if (jar == null && path.startsWith("/META-INF/tags")) {
+            // This is a tag file that was packaged in a JAR that has been
+            // unpacked into /WEB-INF/classes (probably by an IDE). Adjust the
+            // path accordingly.
+            path = "/WEB-INF/classes" + path;
         }
 
         TagInfo tagInfo =
@@ -378,8 +386,9 @@ class TagLibraryInfoImpl extends TagLibraryInfo implements TagConstants {
      */
     public ValidationMessage[] validate(PageData thePage) {
         TagLibraryValidator tlv = getTagLibraryValidator();
-        if (tlv == null)
+        if (tlv == null) {
             return null;
+        }
 
         String uri = getURI();
         if (uri.startsWith("/")) {

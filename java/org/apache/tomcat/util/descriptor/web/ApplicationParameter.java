@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.descriptor.web;
 
 import java.io.Serializable;
@@ -43,7 +41,7 @@ public class ApplicationParameter implements Serializable {
     private String description = null;
 
     public String getDescription() {
-        return (this.description);
+        return this.description;
     }
 
     public void setDescription(String description) {
@@ -57,7 +55,7 @@ public class ApplicationParameter implements Serializable {
     private String name = null;
 
     public String getName() {
-        return (this.name);
+        return this.name;
     }
 
     public void setName(String name) {
@@ -72,7 +70,7 @@ public class ApplicationParameter implements Serializable {
     private boolean override = true;
 
     public boolean getOverride() {
-        return (this.override);
+        return this.override;
     }
 
     public void setOverride(boolean override) {
@@ -86,7 +84,7 @@ public class ApplicationParameter implements Serializable {
     private String value = null;
 
     public String getValue() {
-        return (this.value);
+        return this.value;
     }
 
     public void setValue(String value) {
@@ -113,8 +111,8 @@ public class ApplicationParameter implements Serializable {
         sb.append(value);
         sb.append(", override=");
         sb.append(override);
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
 
     }
 

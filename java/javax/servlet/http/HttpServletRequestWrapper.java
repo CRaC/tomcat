@@ -30,7 +30,7 @@ import javax.servlet.ServletRequestWrapper;
  * calling through to the wrapped request object.
  *
  * @see javax.servlet.http.HttpServletRequest
- * @since v 2.3
+ * @since Servlet 2.3
  */
 public class HttpServletRequestWrapper extends ServletRequestWrapper implements
         HttpServletRequest {
@@ -243,6 +243,8 @@ public class HttpServletRequestWrapper extends ServletRequestWrapper implements
     /**
      * The default behavior of this method is to call changeSessionId() on the
      * wrapped request object.
+     *
+     * @since Servlet 3.1
      */
     @Override
     public String changeSessionId() {

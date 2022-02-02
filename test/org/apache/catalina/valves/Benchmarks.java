@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.valves;
 
 import java.text.SimpleDateFormat;
@@ -195,7 +194,7 @@ public class Benchmarks {
             } catch (Throwable t) {
                 index = 0; // cannot happen, in theory
             }
-            return (months[index]);
+            return months[index];
         }
     }
 
@@ -461,8 +460,8 @@ public class Benchmarks {
     private static class BenchmarkTest {
         public void doTest(int threadCount, Runnable[] tests) throws Exception {
             for (int iterations = 1000000; iterations < 10000001; iterations += 1000000) {
-                for (int i = 0; i < tests.length; i++) {
-                    doTestInternal(threadCount, iterations, tests[i]);
+                for (Runnable test : tests) {
+                    doTestInternal(threadCount, iterations, test);
                 }
             }
         }

@@ -231,8 +231,8 @@ public class MapDemo implements ChannelListener, MembershipListener{
             public StringBuilder getMemberNames(Member[] members){
                 StringBuilder buf = new StringBuilder();
                 if ( members!=null ) {
-                    for (int i=0;i<members.length; i++ ) {
-                        buf.append(members[i].getName());
+                    for (Member member : members) {
+                        buf.append(member.getName());
                         buf.append("; ");
                     }
                 }
@@ -245,7 +245,9 @@ public class MapDemo implements ChannelListener, MembershipListener{
                     update();
                     return "";
                 }
-                if ( row == 0 ) return columnNames[col];
+                if ( row == 0 ) {
+                  return columnNames[col];
+                }
                 Object[] keys = map.keySetFull().toArray();
                 String key = (String)keys [row-1];
                 LazyReplicatedMap.MapEntry<String,StringBuilder> entry =
@@ -537,10 +539,16 @@ public class MapDemo implements ChannelListener, MembershipListener{
                 boolean primary = ( (Boolean) table.getValueAt(row, 5)).booleanValue();
                 boolean proxy = ( (Boolean) table.getValueAt(row, 6)).booleanValue();
                 boolean backup = ( (Boolean) table.getValueAt(row, 7)).booleanValue();
-                if (primary) color = Color.GREEN;
-                else if (proxy) color = Color.RED;
-                else if (backup) color = Color.BLUE;
-                if ( color != null ) cell.setBackground(color);
+                if (primary) {
+                  color = Color.GREEN;
+                } else if (proxy) {
+                  color = Color.RED;
+                } else if (backup) {
+                  color = Color.BLUE;
+                }
+                if ( color != null ) {
+                  cell.setBackground(color);
+                }
             }
             return cell;
         }

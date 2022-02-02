@@ -19,6 +19,7 @@ package org.apache.catalina.core;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,6 +41,7 @@ import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Valve;
 import org.apache.catalina.loader.WebappClassLoaderBase;
+import org.apache.catalina.util.ContextName;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
@@ -206,19 +208,12 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
 
-    /**
-     * Return the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     */
     @Override
     public String getAppBase() {
-        return (this.appBase);
+        return this.appBase;
     }
 
 
-    /**
-     * ({@inheritDoc}
-     */
     @Override
     public File getAppBaseFile() {
 
@@ -245,15 +240,8 @@ public class StandardHost extends ContainerBase implements Host {
     }
 
 
-    /**
-     * Set the application root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     *
-     * @param appBase The new application root
-     */
     @Override
     public void setAppBase(String appBase) {
-
         if (appBase.trim().equals("")) {
             log.warn(sm.getString("standardHost.problematicAppBase", getName()));
         }
@@ -265,34 +253,22 @@ public class StandardHost extends ContainerBase implements Host {
 
 
     /**
-     * Return the XML root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     * If null, defaults to
-     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
+     * ({@inheritDoc}
      */
     @Override
     public String getXmlBase() {
-
-        return (this.xmlBase);
-
+        return this.xmlBase;
     }
 
 
     /**
-     * Set the Xml root for this Host.  This can be an absolute
-     * pathname, a relative pathname, or a URL.
-     * If null, defaults to
-     * ${catalina.base}/conf/&lt;engine name&gt;/&lt;host name&gt; directory
-     *
-     * @param xmlBase The new XML root
+     * ({@inheritDoc}
      */
     @Override
     public void setXmlBase(String xmlBase) {
-
         String oldXmlBase = this.xmlBase;
         this.xmlBase = xmlBase;
         support.firePropertyChange("xmlBase", oldXmlBase, this.xmlBase);
-
     }
 
 
@@ -319,8 +295,9 @@ public class StandardHost extends ContainerBase implements Host {
             path = xmlDir.toString();
         }
         File file = new File(path);
-        if (!file.isAbsolute())
+        if (!file.isAbsolute()) {
             file = new File(getCatalinaBase(), path);
+        }
         try {
             file = file.getCanonicalFile();
         } catch (IOException e) {// ignore
@@ -354,9 +331,7 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public boolean getAutoDeploy() {
-
-        return (this.autoDeploy);
-
+        return this.autoDeploy;
     }
 
 
@@ -382,9 +357,7 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public String getConfigClass() {
-
-        return (this.configClass);
-
+        return this.configClass;
     }
 
 
@@ -410,9 +383,7 @@ public class StandardHost extends ContainerBase implements Host {
      * for new web applications.
      */
     public String getContextClass() {
-
-        return (this.contextClass);
-
+        return this.contextClass;
     }
 
 
@@ -439,9 +410,7 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public boolean getDeployOnStartup() {
-
-        return (this.deployOnStartup);
-
+        return this.deployOnStartup;
     }
 
 
@@ -465,9 +434,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @return <code>true</code> if XML context descriptors should be deployed.
      */
     public boolean isDeployXML() {
-
         return deployXML;
-
     }
 
 
@@ -477,9 +444,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @param deployXML <code>true</code> if context descriptors should be deployed
      */
     public void setDeployXML(boolean deployXML) {
-
         this.deployXML = deployXML;
-
     }
 
 
@@ -487,9 +452,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @return the copy XML config file flag for this component.
      */
     public boolean isCopyXML() {
-
         return this.copyXML;
-
     }
 
 
@@ -499,9 +462,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @param copyXML The new copy XML flag
      */
     public void setCopyXML(boolean copyXML) {
-
         this.copyXML = copyXML;
-
     }
 
 
@@ -510,9 +471,7 @@ public class StandardHost extends ContainerBase implements Host {
      * for new web applications.
      */
     public String getErrorReportValveClass() {
-
-        return (this.errorReportValveClass);
-
+        return this.errorReportValveClass;
     }
 
 
@@ -539,9 +498,7 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public String getName() {
-
-        return (name);
-
+        return name;
     }
 
 
@@ -556,9 +513,10 @@ public class StandardHost extends ContainerBase implements Host {
     @Override
     public void setName(String name) {
 
-        if (name == null)
+        if (name == null) {
             throw new IllegalArgumentException
                 (sm.getString("standardHost.nullName"));
+        }
 
         name = name.toLowerCase(Locale.ENGLISH);      // Internally all names are lower case
 
@@ -573,9 +531,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @return <code>true</code> if WARs should be unpacked on deployment.
      */
     public boolean isUnpackWARs() {
-
-        return (unpackWARs);
-
+        return unpackWARs;
     }
 
 
@@ -585,9 +541,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @param unpackWARs <code>true</code> to unpack WARs on deployment
      */
     public void setUnpackWARs(boolean unpackWARs) {
-
         this.unpackWARs = unpackWARs;
-
     }
 
 
@@ -595,8 +549,7 @@ public class StandardHost extends ContainerBase implements Host {
      * @return host work directory base.
      */
     public String getWorkDir() {
-
-        return (workDir);
+        return workDir;
     }
 
 
@@ -606,7 +559,6 @@ public class StandardHost extends ContainerBase implements Host {
      * @param workDir the new base work folder for this host
      */
     public void setWorkDir(String workDir) {
-
         this.workDir = workDir;
     }
 
@@ -700,14 +652,13 @@ public class StandardHost extends ContainerBase implements Host {
 
         synchronized (aliasesLock) {
             // Skip duplicate aliases
-            for (int i = 0; i < aliases.length; i++) {
-                if (aliases[i].equals(alias))
+            for (String s : aliases) {
+                if (s.equals(alias)) {
                     return;
+                }
             }
             // Add this alias to the list
-            String newAliases[] = new String[aliases.length + 1];
-            for (int i = 0; i < aliases.length; i++)
-                newAliases[i] = aliases[i];
+            String newAliases[] = Arrays.copyOf(aliases, aliases.length + 1);
             newAliases[aliases.length] = alias;
             aliases = newAliases;
         }
@@ -726,11 +677,21 @@ public class StandardHost extends ContainerBase implements Host {
     @Override
     public void addChild(Container child) {
 
-        child.addLifecycleListener(new MemoryLeakTrackingListener());
-
-        if (!(child instanceof Context))
+        if (!(child instanceof Context)) {
             throw new IllegalArgumentException
                 (sm.getString("standardHost.notContext"));
+        }
+
+        child.addLifecycleListener(new MemoryLeakTrackingListener());
+
+        // Avoid NPE for case where Context is defined in server.xml with only a
+        // docBase
+        Context context = (Context) child;
+        if (context.getPath() == null) {
+            ContextName cn = new ContextName(context.getDocBase(), true);
+            context.setPath(cn.getPath());
+        }
+
         super.addChild(child);
 
     }
@@ -778,7 +739,7 @@ public class StandardHost extends ContainerBase implements Host {
             }
         }
 
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
     /**
@@ -787,11 +748,9 @@ public class StandardHost extends ContainerBase implements Host {
      */
     @Override
     public String[] findAliases() {
-
         synchronized (aliasesLock) {
-            return (this.aliases);
+            return this.aliases;
         }
-
     }
 
 
@@ -815,15 +774,17 @@ public class StandardHost extends ContainerBase implements Host {
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified alias
             int j = 0;
             String results[] = new String[aliases.length - 1];
             for (int i = 0; i < aliases.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = aliases[i];
+                }
             }
             aliases = results;
 
@@ -875,25 +836,24 @@ public class StandardHost extends ContainerBase implements Host {
 
     // -------------------- JMX  --------------------
     /**
-      * @return the MBean Names of the Valves associated with this Host
-      *
-      * @exception Exception if an MBean cannot be created or registered
-      */
-     public String[] getValveNames() throws Exception {
-         Valve [] valves = this.getPipeline().getValves();
-         String [] mbeanNames = new String[valves.length];
-         for (int i = 0; i < valves.length; i++) {
-             if (valves[i] instanceof JmxEnabled) {
-                 ObjectName oname = ((JmxEnabled) valves[i]).getObjectName();
-                 if (oname != null) {
-                     mbeanNames[i] = oname.toString();
-                 }
-             }
-         }
+     * @return the MBean Names of the Valves associated with this Host
+     *
+     * @exception Exception if an MBean cannot be created or registered
+     */
+    public String[] getValveNames() throws Exception {
+        Valve [] valves = this.getPipeline().getValves();
+        String [] mbeanNames = new String[valves.length];
+        for (int i = 0; i < valves.length; i++) {
+            if (valves[i] instanceof JmxEnabled) {
+                ObjectName oname = ((JmxEnabled) valves[i]).getObjectName();
+                if (oname != null) {
+                    mbeanNames[i] = oname.toString();
+                }
+            }
+        }
 
-         return mbeanNames;
-
-     }
+        return mbeanNames;
+    }
 
     public String[] getAliases() {
         synchronized (aliasesLock) {

@@ -17,13 +17,22 @@
 package org.apache.catalina.users;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.util.HashMap;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import org.apache.catalina.Globals;
 import org.apache.catalina.Group;
@@ -39,20 +48,44 @@ import org.apache.tomcat.util.res.StringManager;
 import org.xml.sax.Attributes;
 
 /**
- * <p>Concrete implementation of {@link UserDatabase} that loads all
- * defined users, groups, and roles into an in-memory data structure,
- * and uses a specified XML file for its persistent storage.</p>
+ * Concrete implementation of {@link UserDatabase} that loads all defined users,
+ * groups, and roles into an in-memory data structure, and uses a specified XML
+ * file for its persistent storage.
+ * <p>
+ * This class is thread-safe.
+ * <p>
+ * This class does not enforce what, in an RDBMS, would be called referential
+ * integrity. Concurrent modifications may result in inconsistent data such as
+ * a User retaining a reference to a Role that has been removed from the
+ * database.
  *
  * @author Craig R. McClanahan
  * @since 4.1
  */
+/*
+ * Implementation notes:
+ *
+ * Any operation that acts on a single element of the database (e.g. operations
+ * that create, read, update or delete a user, role or group) must first obtain
+ * the read lock. Operations that return iterators for users, roles or groups
+ * also fall into this category.
+ *
+ * Iterators must always be created from copies of the data to prevent possible
+ * corruption of the iterator due to the remove of all elements from the
+ * underlying Map that would occur during a subsequent re-loading of the
+ * database.
+ *
+ * Any operation that acts on multiple elements and expects the database to
+ * remain consistent during the operation (e.g. saving or loading the database)
+ * must first obtain the write lock.
+ */
 public class MemoryUserDatabase implements UserDatabase {
 
-
     private static final Log log = LogFactory.getLog(MemoryUserDatabase.class);
+    private static final StringManager sm = StringManager.getManager(MemoryUserDatabase.class);
+
 
     // ----------------------------------------------------------- Constructors
-
 
     /**
      * Create a new instance with default values.
@@ -71,29 +104,23 @@ public class MemoryUserDatabase implements UserDatabase {
         this.id = id;
     }
 
-
     // ----------------------------------------------------- Instance Variables
 
-
     /**
-     * The set of {@link Group}s defined in this database, keyed by
-     * group name.
+     * The set of {@link Group}s defined in this database, keyed by group name.
      */
-    protected final HashMap<String,Group> groups = new HashMap<>();
-
+    protected final Map<String, Group> groups = new ConcurrentHashMap<>();
 
     /**
      * The unique global identifier of this user database.
      */
     protected final String id;
 
-
     /**
-     * The relative (to <code>catalina.base</code>) or absolute pathname to
-     * the XML file in which we will save our persistent information.
+     * The relative (to <code>catalina.base</code>) or absolute pathname to the
+     * XML file in which we will save our persistent information.
      */
     protected String pathname = "conf/tomcat-users.xml";
-
 
     /**
      * The relative or absolute pathname to the file in which our old
@@ -101,13 +128,11 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     protected String pathnameOld = pathname + ".old";
 
-
     /**
-     * The relative or absolute pathname of the file in which we write
-     * our new information prior to renaming.
+     * The relative or absolute pathname of the file in which we write our new
+     * information prior to renaming.
      */
     protected String pathnameNew = pathname + ".new";
-
 
     /**
      * A flag, indicating if the user database is read only.
@@ -115,39 +140,36 @@ public class MemoryUserDatabase implements UserDatabase {
     protected boolean readonly = true;
 
     /**
-     * The set of {@link Role}s defined in this database, keyed by
-     * role name.
+     * The set of {@link Role}s defined in this database, keyed by role name.
      */
-    protected final HashMap<String,Role> roles = new HashMap<>();
-
+    protected final Map<String, Role> roles = new ConcurrentHashMap<>();
 
     /**
-     * The string manager for this package.
+     * The set of {@link User}s defined in this database, keyed by user name.
      */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected final Map<String, User> users = new ConcurrentHashMap<>();
 
+    private final ReentrantReadWriteLock dbLock = new ReentrantReadWriteLock();
+    private final Lock readLock = dbLock.readLock();
+    private final Lock writeLock = dbLock.writeLock();
 
-    /**
-     * The set of {@link User}s defined in this database, keyed by
-     * user name.
-     */
-    protected final HashMap<String,User> users = new HashMap<>();
+    private volatile long lastModified = 0;
+    private boolean watchSource = true;
 
 
     // ------------------------------------------------------------- Properties
-
 
     /**
      * @return the set of {@link Group}s defined in this user database.
      */
     @Override
     public Iterator<Group> getGroups() {
-
-        synchronized (groups) {
-            return (groups.values().iterator());
+        readLock.lock();
+        try {
+            return new ArrayList<>(groups.values()).iterator();
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
@@ -156,9 +178,7 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public String getId() {
-
-        return (this.id);
-
+        return this.id;
     }
 
 
@@ -166,9 +186,7 @@ public class MemoryUserDatabase implements UserDatabase {
      * @return the relative or absolute pathname to the persistent storage file.
      */
     public String getPathname() {
-
-        return (this.pathname);
-
+        return this.pathname;
     }
 
 
@@ -178,11 +196,9 @@ public class MemoryUserDatabase implements UserDatabase {
      * @param pathname The new pathname
      */
     public void setPathname(String pathname) {
-
         this.pathname = pathname;
         this.pathnameOld = pathname + ".old";
         this.pathnameNew = pathname + ".new";
-
     }
 
 
@@ -190,9 +206,7 @@ public class MemoryUserDatabase implements UserDatabase {
      * @return the readonly status of the user database
      */
     public boolean getReadonly() {
-
-        return (this.readonly);
-
+        return this.readonly;
     }
 
 
@@ -202,9 +216,18 @@ public class MemoryUserDatabase implements UserDatabase {
      * @param readonly the new status
      */
     public void setReadonly(boolean readonly) {
-
         this.readonly = readonly;
+    }
 
+
+    public boolean getWatchSource() {
+        return watchSource;
+    }
+
+
+
+    public void setWatchSource(boolean watchSource) {
+        this.watchSource = watchSource;
     }
 
 
@@ -213,11 +236,12 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public Iterator<Role> getRoles() {
-
-        synchronized (roles) {
-            return (roles.values().iterator());
+        readLock.lock();
+        try {
+            return new ArrayList<>(roles.values()).iterator();
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
@@ -226,17 +250,16 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public Iterator<User> getUsers() {
-
-        synchronized (users) {
-            return (users.values().iterator());
+        readLock.lock();
+        try {
+            return new ArrayList<>(users.values()).iterator();
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
-
     // --------------------------------------------------------- Public Methods
-
 
     /**
      * Finalize access to this user database.
@@ -246,15 +269,15 @@ public class MemoryUserDatabase implements UserDatabase {
     @Override
     public void close() throws Exception {
 
-        save();
-
-        synchronized (groups) {
-            synchronized (users) {
-                users.clear();
-                groups.clear();
-            }
+        writeLock.lock();
+        try {
+            save();
+            users.clear();
+            groups.clear();
+            roles.clear();
+        } finally {
+            writeLock.unlock();
         }
-
     }
 
 
@@ -266,7 +289,6 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public Group createGroup(String groupname, String description) {
-
         if (groupname == null || groupname.length() == 0) {
             String msg = sm.getString("memoryUserDatabase.nullGroup");
             log.warn(msg);
@@ -274,11 +296,13 @@ public class MemoryUserDatabase implements UserDatabase {
         }
 
         MemoryGroup group = new MemoryGroup(this, groupname, description);
-        synchronized (groups) {
+        readLock.lock();
+        try {
             groups.put(group.getGroupname(), group);
+        } finally {
+            readLock.unlock();
         }
-        return (group);
-
+        return group;
     }
 
 
@@ -290,7 +314,6 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public Role createRole(String rolename, String description) {
-
         if (rolename == null || rolename.length() == 0) {
             String msg = sm.getString("memoryUserDatabase.nullRole");
             log.warn(msg);
@@ -298,11 +321,13 @@ public class MemoryUserDatabase implements UserDatabase {
         }
 
         MemoryRole role = new MemoryRole(this, rolename, description);
-        synchronized (roles) {
+        readLock.lock();
+        try {
             roles.put(role.getRolename(), role);
+        } finally {
+            readLock.unlock();
         }
-        return (role);
-
+        return role;
     }
 
 
@@ -314,8 +339,7 @@ public class MemoryUserDatabase implements UserDatabase {
      * @param fullName The full name of the new user
      */
     @Override
-    public User createUser(String username, String password,
-                           String fullName) {
+    public User createUser(String username, String password, String fullName) {
 
         if (username == null || username.length() == 0) {
             String msg = sm.getString("memoryUserDatabase.nullUser");
@@ -324,58 +348,64 @@ public class MemoryUserDatabase implements UserDatabase {
         }
 
         MemoryUser user = new MemoryUser(this, username, password, fullName);
-        synchronized (users) {
+        readLock.lock();
+        try {
             users.put(user.getUsername(), user);
+        } finally {
+            readLock.unlock();
         }
-        return (user);
+        return user;
     }
 
 
     /**
-     * Return the {@link Group} with the specified group name, if any;
-     * otherwise return <code>null</code>.
+     * Return the {@link Group} with the specified group name, if any; otherwise
+     * return <code>null</code>.
      *
      * @param groupname Name of the group to return
      */
     @Override
     public Group findGroup(String groupname) {
-
-        synchronized (groups) {
+        readLock.lock();
+        try {
             return groups.get(groupname);
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
     /**
-     * Return the {@link Role} with the specified role name, if any;
-     * otherwise return <code>null</code>.
+     * Return the {@link Role} with the specified role name, if any; otherwise
+     * return <code>null</code>.
      *
      * @param rolename Name of the role to return
      */
     @Override
     public Role findRole(String rolename) {
-
-        synchronized (roles) {
+        readLock.lock();
+        try {
             return roles.get(rolename);
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
     /**
-     * Return the {@link User} with the specified user name, if any;
-     * otherwise return <code>null</code>.
+     * Return the {@link User} with the specified user name, if any; otherwise
+     * return <code>null</code>.
      *
      * @param username Name of the user to return
      */
     @Override
     public User findUser(String username) {
-
-        synchronized (users) {
+        readLock.lock();
+        try {
             return users.get(username);
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
@@ -386,39 +416,61 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public void open() throws Exception {
+        writeLock.lock();
+        try {
+            // Erase any previous groups and users
+            users.clear();
+            groups.clear();
+            roles.clear();
 
-        synchronized (groups) {
-            synchronized (users) {
+            String pathName = getPathname();
+            URI uri = ConfigFileLoader.getURI(pathName);
+            URLConnection uConn = null;
 
-                // Erase any previous groups and users
+            try {
+                URL url = uri.toURL();
+                uConn = url.openConnection();
+
+                InputStream is = uConn.getInputStream();
+                this.lastModified = uConn.getLastModified();
+
+                // Construct a digester to read the XML input file
+                Digester digester = new Digester();
+                try {
+                    digester.setFeature(
+                            "http://apache.org/xml/features/allow-java-encodings", true);
+                } catch (Exception e) {
+                    log.warn(sm.getString("memoryUserDatabase.xmlFeatureEncoding"), e);
+                }
+                digester.addFactoryCreate("tomcat-users/group",
+                        new MemoryGroupCreationFactory(this), true);
+                digester.addFactoryCreate("tomcat-users/role",
+                        new MemoryRoleCreationFactory(this), true);
+                digester.addFactoryCreate("tomcat-users/user",
+                        new MemoryUserCreationFactory(this), true);
+
+                // Parse the XML input to load this database
+                digester.parse(is);
+            } catch (IOException ioe) {
+                log.error(sm.getString("memoryUserDatabase.fileNotFound", pathName));
+            } catch (Exception e) {
+                // Fail safe on error
                 users.clear();
                 groups.clear();
                 roles.clear();
-
-                String pathName = getPathname();
-                try (InputStream is = ConfigFileLoader.getInputStream(getPathname())) {
-                    // Construct a digester to read the XML input file
-                    Digester digester = new Digester();
+                throw e;
+            } finally {
+                if (uConn != null) {
                     try {
-                        digester.setFeature(
-                                "http://apache.org/xml/features/allow-java-encodings", true);
-                    } catch (Exception e) {
-                        log.warn(sm.getString("memoryUserDatabase.xmlFeatureEncoding"), e);
+                        // Can't close a uConn directly. Have to do it like this.
+                        uConn.getInputStream().close();
+                    } catch (IOException ioe) {
+                        log.warn(sm.getString("memoryUserDatabase.fileClose", pathname), ioe);
                     }
-                    digester.addFactoryCreate("tomcat-users/group",
-                            new MemoryGroupCreationFactory(this), true);
-                    digester.addFactoryCreate("tomcat-users/role",
-                            new MemoryRoleCreationFactory(this), true);
-                    digester.addFactoryCreate("tomcat-users/user",
-                            new MemoryUserCreationFactory(this), true);
-
-                    // Parse the XML input to load this database
-                    digester.parse(is);
-                } catch (IOException ioe) {
-                    log.error(sm.getString("memoryUserDatabase.fileNotFound", pathName));
-                    return;
                 }
             }
+        } finally {
+            writeLock.unlock();
         }
     }
 
@@ -430,14 +482,16 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public void removeGroup(Group group) {
-
-        synchronized (groups) {
+        readLock.lock();
+        try {
             Iterator<User> users = getUsers();
             while (users.hasNext()) {
                 User user = users.next();
                 user.removeGroup(group);
             }
             groups.remove(group.getGroupname());
+        } finally {
+            readLock.unlock();
         }
     }
 
@@ -449,8 +503,8 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public void removeRole(Role role) {
-
-        synchronized (roles) {
+        readLock.lock();
+        try {
             Iterator<Group> groups = getGroups();
             while (groups.hasNext()) {
                 Group group = groups.next();
@@ -462,8 +516,9 @@ public class MemoryUserDatabase implements UserDatabase {
                 user.removeRole(role);
             }
             roles.remove(role.getRolename());
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
@@ -474,25 +529,41 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public void removeUser(User user) {
-
-        synchronized (users) {
+        readLock.lock();
+        try {
             users.remove(user.getUsername());
+        } finally {
+            readLock.unlock();
         }
-
     }
 
 
     /**
      * Check for permissions to save this user database to persistent storage
      * location.
+     *
+     * @return <code>true</code> if the database is writable
+     *
+     * @deprecated Use {@link #isWritable()}. This method will be removed in
+     *             Tomcat 10.1.x onwards.
+     */
+    @Deprecated
+    public boolean isWriteable() {
+        return isWritable();
+    }
+
+
+    /**
+     * Check for permissions to save this user database to persistent storage
+     * location.
+     *
      * @return <code>true</code> if the database is writable
      */
-    public boolean isWriteable() {
+    public boolean isWritable() {
 
         File file = new File(pathname);
         if (!file.isAbsolute()) {
-            file = new File(System.getProperty(Globals.CATALINA_BASE_PROP),
-                            pathname);
+            file = new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathname);
         }
         File dir = file.getParentFile();
         return dir.exists() && dir.isDirectory() && dir.canWrite();
@@ -500,8 +571,8 @@ public class MemoryUserDatabase implements UserDatabase {
 
 
     /**
-     * Save any updated information to the persistent storage location for
-     * this user database.
+     * Save any updated information to the persistent storage location for this
+     * user database.
      *
      * @exception Exception if any exception is thrown during saving
      */
@@ -513,7 +584,7 @@ public class MemoryUserDatabase implements UserDatabase {
             return;
         }
 
-        if (!isWriteable()) {
+        if (!isWritable()) {
             log.warn(sm.getString("memoryUserDatabase.notPersistable"));
             return;
         }
@@ -521,92 +592,138 @@ public class MemoryUserDatabase implements UserDatabase {
         // Write out contents to a temporary file
         File fileNew = new File(pathnameNew);
         if (!fileNew.isAbsolute()) {
-            fileNew =
-                new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathnameNew);
+            fileNew = new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathnameNew);
         }
-        PrintWriter writer = null;
+
+        writeLock.lock();
         try {
+            try (FileOutputStream fos = new FileOutputStream(fileNew);
+                    OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+                    PrintWriter writer = new PrintWriter(osw)) {
 
-            // Configure our PrintWriter
-            FileOutputStream fos = new FileOutputStream(fileNew);
-            OutputStreamWriter osw = new OutputStreamWriter(fos, "UTF8");
-            writer = new PrintWriter(osw);
+                // Print the file prolog
+                writer.println("<?xml version='1.0' encoding='utf-8'?>");
+                writer.println("<tomcat-users xmlns=\"http://tomcat.apache.org/xml\"");
+                writer.print("              ");
+                writer.println("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"");
+                writer.print("              ");
+                writer.println("xsi:schemaLocation=\"http://tomcat.apache.org/xml tomcat-users.xsd\"");
+                writer.println("              version=\"1.0\">");
 
-            // Print the file prolog
-            writer.println("<?xml version='1.0' encoding='utf-8'?>");
-            writer.println("<tomcat-users xmlns=\"http://tomcat.apache.org/xml\"");
-            writer.println("              xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"");
-            writer.println("              xsi:schemaLocation=\"http://tomcat.apache.org/xml tomcat-users.xsd\"");
-            writer.println("              version=\"1.0\">");
+                // Print entries for each defined role, group, and user
+                Iterator<?> values = null;
+                values = getRoles();
+                while (values.hasNext()) {
+                    writer.print("  ");
+                    writer.println(values.next());
+                }
+                values = getGroups();
+                while (values.hasNext()) {
+                    writer.print("  ");
+                    writer.println(values.next());
+                }
+                values = getUsers();
+                while (values.hasNext()) {
+                    writer.print("  ");
+                    writer.println(((MemoryUser) values.next()).toXml());
+                }
 
-            // Print entries for each defined role, group, and user
-            Iterator<?> values = null;
-            values = getRoles();
-            while (values.hasNext()) {
-                writer.print("  ");
-                writer.println(values.next());
-            }
-            values = getGroups();
-            while (values.hasNext()) {
-                writer.print("  ");
-                writer.println(values.next());
-            }
-            values = getUsers();
-            while (values.hasNext()) {
-                writer.print("  ");
-                writer.println(((MemoryUser) values.next()).toXml());
-            }
+                // Print the file epilog
+                writer.println("</tomcat-users>");
 
-            // Print the file epilog
-            writer.println("</tomcat-users>");
-
-            // Check for errors that occurred while printing
-            if (writer.checkError()) {
-                writer.close();
-                fileNew.delete();
-                throw new IOException
-                    (sm.getString("memoryUserDatabase.writeException",
-                                  fileNew.getAbsolutePath()));
+                // Check for errors that occurred while printing
+                if (writer.checkError()) {
+                    throw new IOException(sm.getString("memoryUserDatabase.writeException",
+                            fileNew.getAbsolutePath()));
+                }
+            } catch (IOException e) {
+                if (fileNew.exists() && !fileNew.delete()) {
+                    log.warn(sm.getString("memoryUserDatabase.fileDelete", fileNew));
+                }
+                throw e;
             }
-            writer.close();
-        } catch (IOException e) {
-            if (writer != null) {
-                writer.close();
-            }
-            fileNew.delete();
-            throw e;
+            this.lastModified = fileNew.lastModified();
+        } finally {
+            writeLock.unlock();
         }
 
         // Perform the required renames to permanently save this file
         File fileOld = new File(pathnameOld);
         if (!fileOld.isAbsolute()) {
-            fileOld =
-                new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathnameOld);
+            fileOld = new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathnameOld);
         }
-        fileOld.delete();
+        if (fileOld.exists() && !fileOld.delete()) {
+            throw new IOException(sm.getString("memoryUserDatabase.fileDelete", fileOld));
+        }
         File fileOrig = new File(pathname);
         if (!fileOrig.isAbsolute()) {
-            fileOrig =
-                new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathname);
+            fileOrig = new File(System.getProperty(Globals.CATALINA_BASE_PROP), pathname);
         }
         if (fileOrig.exists()) {
-            fileOld.delete();
             if (!fileOrig.renameTo(fileOld)) {
-                throw new IOException
-                    (sm.getString("memoryUserDatabase.renameOld",
-                                  fileOld.getAbsolutePath()));
+                throw new IOException(sm.getString("memoryUserDatabase.renameOld",
+                        fileOld.getAbsolutePath()));
             }
         }
         if (!fileNew.renameTo(fileOrig)) {
             if (fileOld.exists()) {
-                fileOld.renameTo(fileOrig);
+                if (!fileOld.renameTo(fileOrig)) {
+                    log.warn(sm.getString("memoryUserDatabase.restoreOrig", fileOld));
+                }
             }
-            throw new IOException
-                (sm.getString("memoryUserDatabase.renameNew",
-                              fileOrig.getAbsolutePath()));
+            throw new IOException(sm.getString("memoryUserDatabase.renameNew",
+                    fileOrig.getAbsolutePath()));
         }
-        fileOld.delete();
+        if (fileOld.exists() && !fileOld.delete()) {
+            throw new IOException(sm.getString("memoryUserDatabase.fileDelete", fileOld));
+        }
+    }
 
+
+    public void backgroundProcess() {
+        if (!watchSource) {
+            return;
+        }
+
+        URI uri = ConfigFileLoader.getURI(getPathname());
+        URLConnection uConn = null;
+        try {
+            URL url = uri.toURL();
+            uConn = url.openConnection();
+
+            if (this.lastModified != uConn.getLastModified()) {
+                writeLock.lock();
+                try {
+                    long detectedLastModified = uConn.getLastModified();
+                    // Last modified as a resolution of 1s. Ensure that a write
+                    // to the file is not in progress by ensuring that the last
+                    // modified time is at least 2 seconds ago.
+                    if (this.lastModified != detectedLastModified &&
+                            detectedLastModified + 2000 < System.currentTimeMillis()) {
+                        log.info(sm.getString("memoryUserDatabase.reload", id, uri));
+                        open();
+                    }
+                } finally {
+                    writeLock.unlock();
+                }
+            }
+        } catch (Exception ioe) {
+            log.error(sm.getString("memoryUserDatabase.reloadError", id, uri), ioe);
+        } finally {
+            if (uConn != null) {
+                try {
+                    // Can't close a uConn directly. Have to do it like this.
+                    uConn.getInputStream().close();
+                } catch (FileNotFoundException fnfe) {
+                    // The file doesn't exist.
+                    // This has been logged above. No need to log again.
+                    // Set the last modified time to avoid repeated log messages
+                    this.lastModified = 0;
+                } catch (IOException ioe) {
+                    log.warn(sm.getString("memoryUserDatabase.fileClose", pathname), ioe);
+                }
+            }
+        }
     }
 
 
@@ -615,7 +732,6 @@ public class MemoryUserDatabase implements UserDatabase {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("MemoryUserDatabase[id=");
         sb.append(this.id);
         sb.append(",pathname=");
@@ -626,11 +742,10 @@ public class MemoryUserDatabase implements UserDatabase {
         sb.append(this.roles.size());
         sb.append(",userCount=");
         sb.append(this.users.size());
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 }
-
 
 
 /**
@@ -642,6 +757,7 @@ class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
         this.database = database;
     }
 
+
     @Override
     public Object createObject(Attributes attributes) {
         String groupname = attributes.getValue("groupname");
@@ -650,7 +766,14 @@ class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
         }
         String description = attributes.getValue("description");
         String roles = attributes.getValue("roles");
-        Group group = database.createGroup(groupname, description);
+        Group group = database.findGroup(groupname);
+        if (group == null) {
+            group = database.createGroup(groupname, description);
+        } else {
+            if (group.getDescription() == null) {
+                group.setDescription(description);
+            }
+        }
         if (roles != null) {
             while (roles.length() > 0) {
                 String rolename = null;
@@ -671,7 +794,7 @@ class MemoryGroupCreationFactory extends AbstractObjectCreationFactory {
                 }
             }
         }
-        return (group);
+        return group;
     }
 
     private final MemoryUserDatabase database;
@@ -687,6 +810,7 @@ class MemoryRoleCreationFactory extends AbstractObjectCreationFactory {
         this.database = database;
     }
 
+
     @Override
     public Object createObject(Attributes attributes) {
         String rolename = attributes.getValue("rolename");
@@ -694,8 +818,14 @@ class MemoryRoleCreationFactory extends AbstractObjectCreationFactory {
             rolename = attributes.getValue("name");
         }
         String description = attributes.getValue("description");
-        Role role = database.createRole(rolename, description);
-        return (role);
+        Role existingRole = database.findRole(rolename);
+        if (existingRole == null) {
+            return database.createRole(rolename, description);
+        }
+        if (existingRole.getDescription() == null) {
+            existingRole.setDescription(description);
+        }
+        return existingRole;
     }
 
     private final MemoryUserDatabase database;
@@ -710,6 +840,7 @@ class MemoryUserCreationFactory extends AbstractObjectCreationFactory {
     public MemoryUserCreationFactory(MemoryUserDatabase database) {
         this.database = database;
     }
+
 
     @Override
     public Object createObject(Attributes attributes) {
@@ -765,7 +896,7 @@ class MemoryUserCreationFactory extends AbstractObjectCreationFactory {
                 }
             }
         }
-        return (user);
+        return user;
     }
 
     private final MemoryUserDatabase database;

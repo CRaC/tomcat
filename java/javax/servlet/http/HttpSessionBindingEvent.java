@@ -14,13 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet.http;
 
 /**
  * Events of this type are either sent to an object that implements
  * {@link HttpSessionBindingListener} when it is bound or unbound from a
- * session, or to a {@link HttpSessionAttributeListener} that has been
+ * session, or to an {@link HttpSessionAttributeListener} that has been
  * configured in the deployment descriptor when any attribute is bound, unbound
  * or replaced in a session.
  * <p>
@@ -36,10 +35,14 @@ public class HttpSessionBindingEvent extends HttpSessionEvent {
 
     private static final long serialVersionUID = 1L;
 
-    /* The name to which the object is being bound or unbound */
+    /**
+     *  The name to which the object is being bound or unbound.
+     */
     private final String name;
 
-    /* The object is being bound or unbound */
+    /**
+     *  The object is being bound or unbound.
+     */
     private final Object value;
 
     /**
@@ -111,7 +114,7 @@ public class HttpSessionBindingEvent extends HttpSessionEvent {
      *         value of the removed attribute. If the attribute was replaced,
      *         this is the old value of the attribute.
      *
-     * @since 2.3
+     * @since Servlet 2.3
      */
     public Object getValue() {
         return this.value;

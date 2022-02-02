@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.ha.tcp;
 
 import java.io.IOException;
@@ -93,13 +92,21 @@ public class ReplicationValve
      */
     protected boolean doProcessingStats = false;
 
-    protected long totalRequestTime = 0;
-    protected long totalSendTime = 0;
-    protected long nrOfRequests = 0;
-    protected long lastSendTime = 0;
-    protected long nrOfFilterRequests = 0;
-    protected long nrOfSendRequests = 0;
-    protected long nrOfCrossContextSendRequests = 0;
+    /*
+     * Note: The statistics are volatile to ensure the concurrent updates do not
+     *       corrupt them but it is still possible that:
+     *       - some updates may be lost;
+     *       - the individual statistics may not be consistent which each other.
+     *       This is a deliberate design choice to reduce the requirement for
+     *       synchronization.
+     */
+    protected volatile long totalRequestTime = 0;
+    protected volatile long totalSendTime = 0;
+    protected volatile long nrOfRequests = 0;
+    protected volatile long lastSendTime = 0;
+    protected volatile long nrOfFilterRequests = 0;
+    protected volatile long nrOfSendRequests = 0;
+    protected volatile long nrOfCrossContextSendRequests = 0;
 
     /**
      * must primary change indicator set
@@ -310,7 +317,7 @@ public class ReplicationValve
         Context context = request.getContext();
         boolean isCrossContext = context != null
                 && context instanceof StandardContext
-                && ((StandardContext) context).getCrossContext();
+                && context.getCrossContext();
         try {
             if(isCrossContext) {
                 if(log.isDebugEnabled()) {
@@ -338,13 +345,11 @@ public class ReplicationValve
         } finally {
             // Array must be remove: Current master request send endAccess at recycle.
             // Don't register this request session again!
-            if(isCrossContext) {
+            if (isCrossContext) {
                 if(log.isDebugEnabled()) {
                     log.debug(sm.getString("ReplicationValve.crossContext.remove"));
                 }
-                // crossContextSessions.remove() only exist at Java 5
-                // register ArrayList at a pool
-                crossContextSessions.set(null);
+                crossContextSessions.remove();
             }
         }
     }
@@ -354,11 +359,11 @@ public class ReplicationValve
      * reset the active statistics
      */
     public void resetStatistics() {
-        totalRequestTime = 0 ;
-        totalSendTime = 0 ;
-        lastSendTime = 0 ;
-        nrOfFilterRequests = 0 ;
-        nrOfRequests = 0 ;
+        totalRequestTime = 0;
+        totalSendTime = 0;
+        lastSendTime = 0;
+        nrOfFilterRequests = 0;
+        nrOfRequests = 0;
         nrOfSendRequests = 0;
         nrOfCrossContextSendRequests = 0;
     }
@@ -422,8 +427,7 @@ public class ReplicationValve
     protected void sendCrossContextSession() {
         List<DeltaSession> sessions = crossContextSessions.get();
         if(sessions != null && sessions.size() >0) {
-            for(Iterator<DeltaSession> iter = sessions.iterator(); iter.hasNext() ;) {
-                Session session = iter.next();
+            for (DeltaSession session : sessions) {
                 if(log.isDebugEnabled()) {
                     log.debug(sm.getString("ReplicationValve.crossContext.sendDelta",
                             session.getManager().getContext().getName() ));
@@ -536,11 +540,11 @@ public class ReplicationValve
     protected void sendInvalidSessions(ClusterManager manager) {
         String[] invalidIds=manager.getInvalidatedSessions();
         if ( invalidIds.length > 0 ) {
-            for ( int i=0;i<invalidIds.length; i++ ) {
+            for (String invalidId : invalidIds) {
                 try {
-                    send(manager,invalidIds[i]);
-                } catch ( Exception x ) {
-                    log.error(sm.getString("ReplicationValve.send.invalid.failure",invalidIds[i]),x);
+                    send(manager, invalidId);
+                } catch (Exception x) {
+                    log.error(sm.getString("ReplicationValve.send.invalid.failure", invalidId), x);
                 }
             }
         }
@@ -564,12 +568,11 @@ public class ReplicationValve
     protected  void updateStats(long requestTime, long clusterTime) {
         // TODO: Async requests may trigger multiple replication requests. How,
         //       if at all, should the stats handle this?
-        synchronized(this) {
-            lastSendTime=System.currentTimeMillis();
-            totalSendTime+=lastSendTime - clusterTime;
-            totalRequestTime+=lastSendTime - requestTime;
-            nrOfRequests++;
-        }
+        long currentTime = System.currentTimeMillis();
+        lastSendTime = currentTime;
+        totalSendTime += currentTime - clusterTime;
+        totalRequestTime += currentTime - requestTime;
+        nrOfRequests++;
         if(log.isInfoEnabled()) {
             if ( (nrOfRequests % 100) == 0 ) {
                  log.info(sm.getString("ReplicationValve.stats",

@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.users;
 
 
@@ -71,9 +69,7 @@ public class MemoryRole extends AbstractRole {
      */
     @Override
     public UserDatabase getUserDatabase() {
-
-        return (this.database);
-
+        return this.database;
     }
 
 
@@ -85,7 +81,6 @@ public class MemoryRole extends AbstractRole {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("<role rolename=\"");
         sb.append(rolename);
         sb.append("\"");
@@ -95,8 +90,7 @@ public class MemoryRole extends AbstractRole {
             sb.append("\"");
         }
         sb.append("/>");
-        return (sb.toString());
-
+        return sb.toString();
     }
 
 

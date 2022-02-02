@@ -24,6 +24,7 @@ import javax.websocket.DeploymentException;
 import javax.websocket.EndpointConfig;
 import javax.websocket.Session;
 
+import org.apache.tomcat.InstanceManager;
 
 /**
  * Wrapper class for instances of POJOs annotated with
@@ -32,12 +33,18 @@ import javax.websocket.Session;
  */
 public class PojoEndpointClient extends PojoEndpointBase {
 
+    @Deprecated
     public PojoEndpointClient(Object pojo,
             List<Class<? extends Decoder>> decoders) throws DeploymentException {
+        super(Collections.<String,String>emptyMap());
         setPojo(pojo);
-        setMethodMapping(
-                new PojoMethodMapping(pojo.getClass(), decoders, null));
-        setPathParameters(Collections.<String,String>emptyMap());
+        setMethodMapping(new PojoMethodMapping(pojo.getClass(), decoders, null));
+    }
+
+    public PojoEndpointClient(Object pojo, List<Class<? extends Decoder>> decoders, InstanceManager instanceManager) throws DeploymentException {
+        super(Collections.<String,String>emptyMap());
+        setPojo(pojo);
+        setMethodMapping(new PojoMethodMapping(pojo.getClass(), decoders, null, instanceManager));
     }
 
     @Override

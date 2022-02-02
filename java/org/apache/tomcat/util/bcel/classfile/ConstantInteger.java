@@ -37,7 +37,8 @@ public final class ConstantInteger extends Constant {
      * Initialize instance from file data.
      *
      * @param file Input stream
-     * @throws IOException
+     * @throws IOException If an I/O occurs reading from the provided
+     *         InoutStream
      */
     ConstantInteger(final DataInput file) throws IOException {
         super(Const.CONSTANT_Integer);
@@ -48,7 +49,7 @@ public final class ConstantInteger extends Constant {
     /**
      * @return data, i.e., 4 bytes.
      */
-    public final int getBytes() {
+    public int getBytes() {
         return bytes;
     }
 }

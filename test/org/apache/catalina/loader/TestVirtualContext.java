@@ -304,7 +304,7 @@ public class TestVirtualContext extends TomcatBaseTest {
         assertPageContains("/test/annotatedServlet", MyAnnotatedServlet.MESSAGE);
         tomcat.stop();
         FileUtils.deleteDirectory(additionWebInfClasses);
-        tempFile.delete();
+        Assert.assertTrue("Failed to clean up [" + tempFile + "]", tempFile.delete());
     }
 
     private void assertPageContains(String pageUrl, String expectedBody)
@@ -322,7 +322,10 @@ public class TestVirtualContext extends TomcatBaseTest {
         //       root cause of this is the frequent poor IO performance of the
         //       VM running the buildbot instance. Increasing this to 10s should
         //       avoid these failures.
-        int sc = getUrl("http://localhost:" + getPort() + pageUrl, res, 10000,
+        //       With the additional of Travis CI, failures continued to
+        //       observed with a 10s timeout. It was therefore increased to 20s
+        //       and then 30s.
+        int sc = getUrl("http://localhost:" + getPort() + pageUrl, res, 30000,
                 null, null);
 
         Assert.assertEquals(expectedStatus, sc);

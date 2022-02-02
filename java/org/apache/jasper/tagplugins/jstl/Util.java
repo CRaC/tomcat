@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl;
 
 import java.io.ByteArrayOutputStream;
@@ -90,11 +88,11 @@ public class Util {
     }
 
     /**
-     * Returns <tt>true</tt> if our current URL is absolute,
-     * <tt>false</tt> otherwise.
+     * Returns <code>true</code> if our current URL is absolute,
+     * <code>false</code> otherwise.
      * taken from org.apache.taglibs.standard.tag.common.core.ImportSupport
      * @param url The URL
-     * @return <tt>true</tt> if the URL is absolute
+     * @return <code>true</code> if the URL is absolute
      */
     public static boolean isAbsoluteUrl(String url){
         if(url == null){
@@ -127,10 +125,14 @@ public class Util {
         int begin;
         int end;
         int index = input.toUpperCase(Locale.ENGLISH).indexOf(name.toUpperCase(Locale.ENGLISH));
-        if (index == -1) return null;
+        if (index == -1) {
+            return null;
+        }
         index = index + name.length(); // positioned after the attribute name
         index = input.indexOf('=', index); // positioned at the '='
-        if (index == -1) return null;
+        if (index == -1) {
+            return null;
+        }
         index += 1; // positioned after the '='
         input = input.substring(index).trim();
 
@@ -138,18 +140,24 @@ public class Util {
             // attribute value is a quoted string
             begin = 1;
             end = input.indexOf('"', begin);
-            if (end == -1) return null;
+            if (end == -1) {
+                return null;
+            }
         } else {
             begin = 0;
             end = input.indexOf(';');
-            if (end == -1) end = input.indexOf(' ');
-            if (end == -1) end = input.length();
+            if (end == -1) {
+                end = input.indexOf(' ');
+            }
+            if (end == -1) {
+                end = input.length();
+            }
         }
         return input.substring(begin, end).trim();
     }
 
     /**
-     * Strips a servlet session ID from <tt>url</tt>.  The session ID
+     * Strips a servlet session ID from <code>url</code>.  The session ID
      * is encoded as a URL "path parameter" beginning with "jsessionid=".
      * We thus remove anything we find between ";jsessionid=" (inclusive)
      * and either EOS or a subsequent ';' (exclusive).
@@ -163,10 +171,12 @@ public class Util {
         int sessionStart;
         while ((sessionStart = u.toString().indexOf(";" + Constants.SESSION_PARAMETER_NAME + "=")) != -1) {
             int sessionEnd = u.toString().indexOf(';', sessionStart + 1);
-            if (sessionEnd == -1)
+            if (sessionEnd == -1) {
                 sessionEnd = u.toString().indexOf('?', sessionStart + 1);
-            if (sessionEnd == -1) // still
+            }
+            if (sessionEnd == -1) {
                 sessionEnd = u.length();
+            }
             u.delete(sessionStart, sessionEnd);
         }
         return u.toString();
@@ -246,17 +256,19 @@ public class Util {
             String url, String context, PageContext pageContext)
     throws JspException {
         // don't touch absolute URLs
-        if (isAbsoluteUrl(url))
+        if (isAbsoluteUrl(url)) {
             return url;
+        }
 
         // normalize relative URLs against a context root
         HttpServletRequest request =
             (HttpServletRequest) pageContext.getRequest();
         if (context == null) {
-            if (url.startsWith("/"))
+            if (url.startsWith("/")) {
                 return (request.getContextPath() + url);
-            else
+            } else {
                 return url;
+            }
         } else {
             if (!context.startsWith("/") || !url.startsWith("/")) {
                 throw new JspTagException(
@@ -312,18 +324,20 @@ public class Util {
 
         @Override
         public PrintWriter getWriter() {
-            if (isStreamUsed)
+            if (isStreamUsed) {
                 throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
                 "Target servlet called getWriter(), then getOutputStream()");
+            }
             isWriterUsed = true;
             return new PrintWriter(sw);
         }
 
         @Override
         public ServletOutputStream getOutputStream() {
-            if (isWriterUsed)
+            if (isWriterUsed) {
                 throw new IllegalStateException("Unexpected internal error during &lt;import&gt: " +
                 "Target servlet called getOutputStream(), then getWriter()");
+            }
             isStreamUsed = true;
             return sos;
         }
@@ -357,15 +371,18 @@ public class Util {
         }
 
         public String getString() throws UnsupportedEncodingException {
-            if (isWriterUsed)
+            if (isWriterUsed) {
                 return sw.toString();
-            else if (isStreamUsed) {
-                if (this.charEncoding != null && !this.charEncoding.equals(""))
+            } else if (isStreamUsed) {
+                if (this.charEncoding != null && !this.charEncoding.equals("")) {
                     return bos.toString(charEncoding);
-                else
+                } else {
                     return bos.toString("ISO-8859-1");
-            } else
+                }
+            }
+            else {
                 return ""; // target didn't write anything
+            }
         }
     }
 

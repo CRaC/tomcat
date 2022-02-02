@@ -60,7 +60,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
     private String filterName = null;
 
     public String getFilterName() {
-        return (this.filterName);
+        return this.filterName;
     }
 
     public void setFilterName(String filterName) {
@@ -77,7 +77,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         if (matchAllServletNames) {
             return new String[] {};
         } else {
-            return (this.servletNames);
+            return this.servletNames;
         }
     }
 
@@ -122,7 +122,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         if (matchAllUrlPatterns) {
             return new String[] {};
         } else {
-            return (this.urlPatterns);
+            return this.urlPatterns;
         }
     }
 
@@ -135,7 +135,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         } else {
             String[] results = new String[urlPatterns.length + 1];
             System.arraycopy(urlPatterns, 0, results, 0, urlPatterns.length);
-            results[urlPatterns.length] = UDecoder.URLDecode(urlPattern);
+            results[urlPatterns.length] = UDecoder.URLDecode(urlPattern, getCharset());
             urlPatterns = results;
         }
     }
@@ -170,7 +170,9 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
     public int getDispatcherMapping() {
         // per the SRV.6.2.5 absence of any dispatcher elements is
         // equivalent to a REQUEST value
-        if (dispatcherMapping == NOT_SET) return REQUEST;
+        if (dispatcherMapping == NOT_SET) {
+            return REQUEST;
+        }
 
         return dispatcherMapping;
     }
@@ -192,7 +194,7 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
         if ((dispatcherMapping & ASYNC) != 0) {
             result.add(DispatcherType.ASYNC.name());
         }
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
     // --------------------------------------------------------- Public Methods
@@ -203,21 +205,19 @@ public class FilterMap extends XmlEncodingBase implements Serializable {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("FilterMap[");
         sb.append("filterName=");
         sb.append(this.filterName);
-        for (int i = 0; i < servletNames.length; i++) {
+        for (String servletName : servletNames) {
             sb.append(", servletName=");
-            sb.append(servletNames[i]);
+            sb.append(servletName);
         }
-        for (int i = 0; i < urlPatterns.length; i++) {
+        for (String urlPattern : urlPatterns) {
             sb.append(", urlPattern=");
-            sb.append(urlPatterns[i]);
+            sb.append(urlPattern);
         }
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 

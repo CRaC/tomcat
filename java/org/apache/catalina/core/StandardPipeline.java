@@ -14,12 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.core;
 
-
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import javax.management.ObjectName;
@@ -36,7 +34,7 @@ import org.apache.catalina.util.LifecycleBase;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
-
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Standard implementation of a processing <b>Pipeline</b> that will invoke
@@ -50,11 +48,10 @@ import org.apache.tomcat.util.ExceptionUtils;
  *
  * @author Craig R. McClanahan
  */
-
-public class StandardPipeline extends LifecycleBase
-        implements Pipeline, Contained {
+public class StandardPipeline extends LifecycleBase implements Pipeline {
 
     private static final Log log = LogFactory.getLog(StandardPipeline.class);
+    private static final StringManager sm = StringManager.getManager(StandardPipeline.class);
 
     // ----------------------------------------------------------- Constructors
 
@@ -137,9 +134,7 @@ public class StandardPipeline extends LifecycleBase
      */
     @Override
     public Container getContainer() {
-
-        return (this.container);
-
+        return this.container;
     }
 
 
@@ -150,9 +145,7 @@ public class StandardPipeline extends LifecycleBase
      */
     @Override
     public void setContainer(Container container) {
-
         this.container = container;
-
     }
 
 
@@ -178,8 +171,9 @@ public class StandardPipeline extends LifecycleBase
             current = basic;
         }
         while (current != null) {
-            if (current instanceof Lifecycle)
+            if (current instanceof Lifecycle) {
                 ((Lifecycle) current).start();
+            }
             current = current.getNext();
         }
 
@@ -205,8 +199,9 @@ public class StandardPipeline extends LifecycleBase
             current = basic;
         }
         while (current != null) {
-            if (current instanceof Lifecycle)
+            if (current instanceof Lifecycle) {
                 ((Lifecycle) current).stop();
+            }
             current = current.getNext();
         }
     }
@@ -242,9 +237,7 @@ public class StandardPipeline extends LifecycleBase
      */
     @Override
     public Valve getBasic() {
-
-        return (this.basic);
-
+        return this.basic;
     }
 
 
@@ -265,8 +258,9 @@ public class StandardPipeline extends LifecycleBase
 
         // Change components if necessary
         Valve oldBasic = this.basic;
-        if (oldBasic == valve)
+        if (oldBasic == valve) {
             return;
+        }
 
         // Stop the old component if necessary
         if (oldBasic != null) {
@@ -274,7 +268,7 @@ public class StandardPipeline extends LifecycleBase
                 try {
                     ((Lifecycle) oldBasic).stop();
                 } catch (LifecycleException e) {
-                    log.error("StandardPipeline.setBasic: stop", e);
+                    log.error(sm.getString("standardPipeline.basic.stop"), e);
                 }
             }
             if (oldBasic instanceof Contained) {
@@ -287,8 +281,9 @@ public class StandardPipeline extends LifecycleBase
         }
 
         // Start the new component if necessary
-        if (valve == null)
+        if (valve == null) {
             return;
+        }
         if (valve instanceof Contained) {
             ((Contained) valve).setContainer(this.container);
         }
@@ -296,7 +291,7 @@ public class StandardPipeline extends LifecycleBase
             try {
                 ((Lifecycle) valve).start();
             } catch (LifecycleException e) {
-                log.error("StandardPipeline.setBasic: start", e);
+                log.error(sm.getString("standardPipeline.basic.start"), e);
                 return;
             }
         }
@@ -339,8 +334,9 @@ public class StandardPipeline extends LifecycleBase
     public void addValve(Valve valve) {
 
         // Validate that we can add this Valve
-        if (valve instanceof Contained)
+        if (valve instanceof Contained) {
             ((Contained) valve).setContainer(this.container);
+        }
 
         // Start the new component if necessary
         if (getState().isAvailable()) {
@@ -348,7 +344,7 @@ public class StandardPipeline extends LifecycleBase
                 try {
                     ((Lifecycle) valve).start();
                 } catch (LifecycleException e) {
-                    log.error("StandardPipeline.addValve: start: ", e);
+                    log.error(sm.getString("standardPipeline.valve.start"), e);
                 }
             }
         }
@@ -381,7 +377,7 @@ public class StandardPipeline extends LifecycleBase
     @Override
     public Valve[] getValves() {
 
-        ArrayList<Valve> valveList = new ArrayList<>();
+        List<Valve> valveList = new ArrayList<>();
         Valve current = first;
         if (current == null) {
             current = basic;
@@ -397,7 +393,7 @@ public class StandardPipeline extends LifecycleBase
 
     public ObjectName[] getValveObjectNames() {
 
-        ArrayList<ObjectName> valveList = new ArrayList<>();
+        List<ObjectName> valveList = new ArrayList<>();
         Valve current = first;
         if (current == null) {
             current = basic;
@@ -439,10 +435,13 @@ public class StandardPipeline extends LifecycleBase
             current = current.getNext();
         }
 
-        if (first == basic) first = null;
+        if (first == basic) {
+            first = null;
+        }
 
-        if (valve instanceof Contained)
+        if (valve instanceof Contained) {
             ((Contained) valve).setContainer(null);
+        }
 
         if (valve instanceof Lifecycle) {
             // Stop this valve if necessary
@@ -450,13 +449,13 @@ public class StandardPipeline extends LifecycleBase
                 try {
                     ((Lifecycle) valve).stop();
                 } catch (LifecycleException e) {
-                    log.error("StandardPipeline.removeValve: stop: ", e);
+                    log.error(sm.getString("standardPipeline.valve.stop"), e);
                 }
             }
             try {
                 ((Lifecycle) valve).destroy();
             } catch (LifecycleException e) {
-                log.error("StandardPipeline.removeValve: destroy: ", e);
+                log.error(sm.getString("standardPipeline.valve.destroy"), e);
             }
         }
 

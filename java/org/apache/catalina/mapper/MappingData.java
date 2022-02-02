@@ -14,13 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.mapper;
 
 import org.apache.catalina.Context;
 import org.apache.catalina.Host;
 import org.apache.catalina.Wrapper;
-import org.apache.catalina.servlet4preview.http.MappingMatch;
+import org.apache.catalina.core.ApplicationMappingMatch;
 import org.apache.tomcat.util.buf.MessageBytes;
 
 /**
@@ -37,6 +36,10 @@ public class MappingData {
     public Wrapper wrapper = null;
     public boolean jspWildCard = false;
 
+    /**
+     * @deprecated Unused. This will be removed in Tomcat 10.
+     */
+    @Deprecated
     public final MessageBytes contextPath = MessageBytes.newInstance();
     public final MessageBytes requestPath = MessageBytes.newInstance();
     public final MessageBytes wrapperPath = MessageBytes.newInstance();
@@ -44,8 +47,8 @@ public class MappingData {
 
     public final MessageBytes redirectPath = MessageBytes.newInstance();
 
-    // Fields used by ApplicationMapping to implement javax.servlet.http.Mapping
-    public MappingMatch matchType = MappingMatch.UNKNOWN;
+    // Fields used by ApplicationMapping to implement javax.servlet.http.HttpServletMapping
+    public ApplicationMappingMatch matchType = null;
 
     public void recycle() {
         host = null;
@@ -59,6 +62,6 @@ public class MappingData {
         wrapperPath.recycle();
         pathInfo.recycle();
         redirectPath.recycle();
-        matchType = MappingMatch.UNKNOWN;
+        matchType = null;
     }
 }

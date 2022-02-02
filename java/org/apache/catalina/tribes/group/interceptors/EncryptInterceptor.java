@@ -91,8 +91,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
     private void validateChannelChain() throws ChannelException {
         ChannelInterceptor interceptor = getPrevious();
         while(null != interceptor) {
-            if(interceptor instanceof TcpFailureDetector)
+            if(interceptor instanceof TcpFailureDetector) {
                 throw new ChannelConfigException(sm.getString("encryptInterceptor.tcpFailureDetector.ordering"));
+            }
 
             interceptor = interceptor.getPrevious();
         }
@@ -163,15 +164,18 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
      */
     @Override
     public void setEncryptionAlgorithm(String algorithm) {
-        if(null == getEncryptionAlgorithm())
+        if(null == getEncryptionAlgorithm()) {
             throw new IllegalStateException(sm.getString("encryptInterceptor.algorithm.required"));
+        }
 
         int pos = algorithm.indexOf('/');
-        if(pos < 0)
+        if(pos < 0) {
             throw new IllegalArgumentException(sm.getString("encryptInterceptor.algorithm.required"));
+        }
         pos = algorithm.indexOf('/', pos + 1);
-        if(pos < 0)
+        if(pos < 0) {
             throw new IllegalArgumentException(sm.getString("encryptInterceptor.algorithm.required"));
+        }
 
         encryptionAlgorithm = algorithm;
     }
@@ -228,8 +232,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
     public byte[] getEncryptionKey() {
         byte[] key = getEncryptionKeyInternal();
 
-        if(null != key)
+        if(null != key) {
             key = key.clone();
+        }
 
         return key;
     }
@@ -317,8 +322,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
     private static BaseEncryptionManager createEncryptionManager(String algorithm,
             byte[] encryptionKey, String providerName)
         throws NoSuchAlgorithmException, NoSuchPaddingException, NoSuchProviderException {
-        if(null == encryptionKey)
+        if(null == encryptionKey) {
             throw new IllegalStateException(sm.getString("encryptInterceptor.key.required"));
+        }
 
         String algorithmName;
         String algorithmMode;
@@ -341,19 +347,17 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
             algorithmMode = "CBC";
         }
 
-        if("GCM".equalsIgnoreCase(algorithmMode))
+        if("GCM".equalsIgnoreCase(algorithmMode)) {
             return new GCMEncryptionManager(algorithm, new SecretKeySpec(encryptionKey, algorithmName), providerName);
-        else if("CBC".equalsIgnoreCase(algorithmMode)
+        } else if("CBC".equalsIgnoreCase(algorithmMode)
                 || "OFB".equalsIgnoreCase(algorithmMode)
-                || "CFB".equalsIgnoreCase(algorithmMode))
+                || "CFB".equalsIgnoreCase(algorithmMode)) {
             return new BaseEncryptionManager(algorithm,
                     new SecretKeySpec(encryptionKey, algorithmName),
                     providerName);
-//        else if("ECB".equalsIgnoreCase(algorithmMode)) {
-            // Note: ECB is not an appropriate mode for secure communications.
-//            return new ECBEncryptionManager(algorithm, new SecretKeySpec(encryptionKey, algorithmName), providerName);
-        else
+        } else {
             throw new IllegalArgumentException(sm.getString("encryptInterceptor.algorithm.unsupported-mode", algorithmMode));
+        }
     }
 
     private static class BaseEncryptionManager {
@@ -505,8 +509,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
 
                 return data;
             } finally {
-                if(null != cipher)
+                if(null != cipher) {
                     returnCipher(cipher);
+                }
             }
         }
 
@@ -533,8 +538,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
                 // Decrypt remainder of the message.
                 return cipher.doFinal(bytes, ivSize, bytes.length - ivSize);
             } finally {
-                if(null != cipher)
+                if(null != cipher) {
                     returnCipher(cipher);
+                }
             }
         }
 
@@ -553,8 +559,9 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
 
                 return ivBytes;
             } finally {
-                if(null != random)
+                if(null != random) {
                     returnRandom(random);
+                }
             }
         }
 
@@ -598,32 +605,6 @@ public class EncryptInterceptor extends ChannelInterceptorBase implements Encryp
         protected AlgorithmParameterSpec generateIV(byte[] bytes, int offset, int length) {
             // See class javadoc for explanation of this magic number (128)
             return new GCMParameterSpec(128, bytes, offset, length);
-        }
-    }
-
-    @SuppressWarnings("unused")
-    private static class ECBEncryptionManager extends BaseEncryptionManager
-    {
-        public ECBEncryptionManager(String algorithm, SecretKeySpec secretKey, String providerName)
-                throws NoSuchAlgorithmException, NoSuchPaddingException, NoSuchProviderException {
-            super(algorithm, secretKey, providerName);
-        }
-
-        private static final byte[] EMPTY_IV = new byte[0];
-
-        @Override
-        protected int getIVSize() {
-            return 0;
-        }
-
-        @Override
-        protected byte[] generateIVBytes() {
-            return EMPTY_IV;
-        }
-
-        @Override
-        protected AlgorithmParameterSpec generateIV(byte[] bytes, int offset, int length) {
-            return null;
         }
     }
 

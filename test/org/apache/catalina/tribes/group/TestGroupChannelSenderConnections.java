@@ -33,6 +33,7 @@ import org.apache.catalina.tribes.ChannelListener;
 import org.apache.catalina.tribes.ManagedChannel;
 import org.apache.catalina.tribes.Member;
 import org.apache.catalina.tribes.TesterUtil;
+import org.apache.catalina.tribes.transport.ReceiverBase;
 import org.apache.catalina.tribes.transport.ReplicationTransmitter;
 
 public class TestGroupChannelSenderConnections extends LoggingBaseTest {
@@ -46,13 +47,14 @@ public class TestGroupChannelSenderConnections extends LoggingBaseTest {
         super.setUp();
         for (int i = 0; i < channels.length; i++) {
             channels[i] = new GroupChannel();
+            ((ReceiverBase) channels[i].getChannelReceiver()).setHost("localhost");
             channels[i].getMembershipService().setPayload( ("Channel-" + (i + 1)).getBytes("ASCII"));
             listeners[i] = new TestMsgListener( ("Listener-" + (i + 1)));
             channels[i].addChannelListener(listeners[i]);
         }
         TesterUtil.addRandomDomain(channels);
-        for (int i = 0; i < channels.length; i++) {
-            channels[i].start(Channel.SND_RX_SEQ|Channel.SND_TX_SEQ);
+        for (ManagedChannel channel : channels) {
+            channel.start(Channel.SND_RX_SEQ | Channel.SND_TX_SEQ);
         }
     }
 
@@ -116,8 +118,8 @@ public class TestGroupChannelSenderConnections extends LoggingBaseTest {
     @Override
     public void tearDown() throws Exception {
         try {
-            for (int i = 0; i < channels.length; i++) {
-                channels[i].stop(Channel.DEFAULT);
+            for (ManagedChannel channel : channels) {
+                channel.stop(Channel.DEFAULT);
             }
         } finally {
             super.tearDown();

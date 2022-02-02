@@ -43,12 +43,14 @@ public class StaticFieldELResolver extends ELResolver {
             try {
                 Field field = clazz.getField(name);
                 int modifiers = field.getModifiers();
+                JreCompat jreCompat = JreCompat.getInstance();
                 if (Modifier.isStatic(modifiers) &&
-                        Modifier.isPublic(modifiers)) {
+                        Modifier.isPublic(modifiers) &&
+                        jreCompat.canAccess(null, field)) {
                     return field.get(null);
                 }
-            } catch (IllegalArgumentException | IllegalAccessException
-                    | NoSuchFieldException | SecurityException e) {
+            } catch (IllegalArgumentException | IllegalAccessException |
+                    NoSuchFieldException | SecurityException e) {
                 exception = e;
             }
             String msg = Util.message(context, "staticFieldELResolver.notFound",
@@ -73,7 +75,7 @@ public class StaticFieldELResolver extends ELResolver {
             String name = (String) property;
 
             throw new PropertyNotWritableException(Util.message(context,
-                    "staticFieldELResolver.notWriteable", name,
+                    "staticFieldELResolver.notWritable", name,
                     clazz.getName()));
         }
     }
@@ -101,22 +103,23 @@ public class StaticFieldELResolver extends ELResolver {
 
                 try {
                     result = match.newInstance(parameters);
-                } catch (IllegalArgumentException | IllegalAccessException |
-                        InstantiationException e) {
-                    throw new ELException(e);
                 } catch (InvocationTargetException e) {
                     Throwable cause = e.getCause();
                     Util.handleThrowable(cause);
                     throw new ELException(cause);
+                } catch (ReflectiveOperationException e) {
+                    throw new ELException(e);
                 }
                 return result;
 
             } else {
-                Method match =
-                        Util.findMethod(clazz, methodName, paramTypes, params);
+                // Static method so base should be null
+                Method match = Util.findMethod(clazz, null, methodName, paramTypes, params);
 
-                int modifiers = match.getModifiers();
-                if (!Modifier.isStatic(modifiers)) {
+                // Note: On Java 9 and above, the isStatic check becomes
+                // unnecessary because the canAccess() call in Util.findMethod()
+                // effectively performs the same check
+                if (match == null || !Modifier.isStatic(match.getModifiers())) {
                     throw new MethodNotFoundException(Util.message(context,
                             "staticFieldELResolver.methodNotFound", methodName,
                             clazz.getName()));
@@ -154,8 +157,10 @@ public class StaticFieldELResolver extends ELResolver {
             try {
                 Field field = clazz.getField(name);
                 int modifiers = field.getModifiers();
+                JreCompat jreCompat = JreCompat.getInstance();
                 if (Modifier.isStatic(modifiers) &&
-                        Modifier.isPublic(modifiers)) {
+                        Modifier.isPublic(modifiers) &&
+                        jreCompat.canAccess(null, field)) {
                     return field.getType();
                 }
             } catch (IllegalArgumentException | NoSuchFieldException |

@@ -42,8 +42,9 @@ public final class UDecoder {
 
     private static final Log log = LogFactory.getLog(UDecoder.class);
 
+    @Deprecated
     public static final boolean ALLOW_ENCODED_SLASH =
-        Boolean.parseBoolean(System.getProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "false"));
+            Boolean.parseBoolean(System.getProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "false"));
 
     private static class DecodeException extends CharConversionException {
         private static final long serialVersionUID = 1L;
@@ -59,7 +60,7 @@ public final class UDecoder {
     }
 
     /** Unexpected end of data. */
-    private static final IOException EXCEPTION_EOF = new DecodeException("EOF");
+    private static final IOException EXCEPTION_EOF = new DecodeException(sm.getString("uDecoder.eof"));
 
     /** %xx with not-hex digit */
     private static final IOException EXCEPTION_NOT_HEX_DIGIT = new DecodeException(
@@ -69,19 +70,45 @@ public final class UDecoder {
     private static final IOException EXCEPTION_SLASH = new DecodeException(
             "noSlash");
 
-    public UDecoder()
-    {
-    }
 
     /**
-     * URLDecode, will modify the source.
-     * @param mb The URL encoded bytes
-     * @param query <code>true</code> if this is a query string
+     * URLDecode, will modify the source. Assumes source bytes are encoded using
+     * a superset of US-ASCII as per RFC 7230. "%2f" will be rejected unless the
+     * input is a query string.
+     *
+     * @param mb    The URL encoded bytes
+     * @param query {@code true} if this is a query string. For a query string
+     *                  '+' will be decoded to ' '
+     *
      * @throws IOException Invalid %xx URL encoding
      */
-    public void convert( ByteChunk mb, boolean query )
-        throws IOException
-    {
+    public void convert(ByteChunk mb, boolean query) throws IOException {
+        if (query) {
+            convert(mb, true, EncodedSolidusHandling.DECODE);
+        } else {
+            convert(mb, false, EncodedSolidusHandling.REJECT);
+        }
+    }
+
+
+    /**
+     * URLDecode, will modify the source. Assumes source bytes are encoded using
+     * a superset of US-ASCII as per RFC 7230.
+     *
+     * @param mb                        The URL encoded bytes
+     * @param encodedSolidusHandling    How should the %2f sequence handled by
+     *                                      the decoder? For query strings this
+     *                                      parameter will be ignored and the
+     *                                      %2f sequence will be decoded
+     * @throws IOException Invalid %xx URL encoding
+     */
+    public void convert(ByteChunk mb, EncodedSolidusHandling encodedSolidusHandling) throws IOException {
+        convert(mb, false, encodedSolidusHandling);
+    }
+
+
+    private void convert(ByteChunk mb, boolean query, EncodedSolidusHandling encodedSolidusHandling) throws IOException {
+
         int start=mb.getOffset();
         byte buff[]=mb.getBytes();
         int end=mb.getEnd();
@@ -99,8 +126,6 @@ public final class UDecoder {
         if( (idx2 >= 0 && idx2 < idx) || idx < 0 ) {
             idx=idx2;
         }
-
-        final boolean noSlash = !(ALLOW_ENCODED_SLASH || query);
 
         for( int j=idx; j<end; j++, idx++ ) {
             if( buff[ j ] == '+' && query) {
@@ -120,27 +145,45 @@ public final class UDecoder {
 
                 j+=2;
                 int res=x2c( b1, b2 );
-                if (noSlash && (res == '/')) {
-                    throw EXCEPTION_SLASH;
+                if (res == '/') {
+                    switch (encodedSolidusHandling) {
+                    case DECODE: {
+                        buff[idx]=(byte)res;
+                        break;
+                    }
+                    case REJECT: {
+                        throw EXCEPTION_SLASH;
+                    }
+                    case PASS_THROUGH: {
+                        buff[idx++] = buff[j-2];
+                        buff[idx++] = buff[j-1];
+                        buff[idx] = buff[j];
+                    }
+                    }
+                } else {
+                    buff[idx]=(byte)res;
                 }
-                buff[idx]=(byte)res;
             }
         }
 
         mb.setEnd( idx );
 
-        return;
     }
 
     // -------------------- Additional methods --------------------
-    // XXX What do we do about charset ????
 
     /**
      * In-buffer processing - the buffer will be modified.
+     * <p>
+     * <b>WARNING:</b> This method assumes US-ASCII encoding.
+     *
      * @param mb The URL encoded chars
      * @param query <code>true</code> if this is a query string
      * @throws IOException Invalid %xx URL encoding
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10
      */
+    @Deprecated
     public void convert( CharChunk mb, boolean query )
         throws IOException
     {
@@ -194,11 +237,17 @@ public final class UDecoder {
     }
 
     /**
-     * URLDecode, will modify the source
+     * URLDecode, will modify the source.
+     * <p>
+     * <b>WARNING:</b> This method assumes US-ASCII encoding.
+     *
      * @param mb The URL encoded String, bytes or chars
      * @param query <code>true</code> if this is a query string
      * @throws IOException Invalid %xx URL encoding
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10
      */
+    @Deprecated
     public void convert(MessageBytes mb, boolean query)
         throws IOException
     {
@@ -227,11 +276,19 @@ public final class UDecoder {
     }
 
     /**
-     * %xx decoding of a string. FIXME: this is inefficient.
+     * %xx decoding of a string.
+     * <p>
+     * <b>WARNING:</b> This method assumes US-ASCII encoding.
+     * <p>
+     * FIXME: this is inefficient.
+     *
      * @param str The URL encoded string
      * @param query <code>true</code> if this is a query string
      * @return the decoded string
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10
      */
+    @Deprecated
     public final String convert(String str, boolean query)
     {
         if (str == null) {
@@ -284,7 +341,7 @@ public final class UDecoder {
                 char res = (char) Integer.parseInt(
                         str.substring(strPos + 1, strPos + 3), 16);
                 if (noSlash && (res == '/')) {
-                    throw new IllegalArgumentException("noSlash");
+                    throw new IllegalArgumentException(sm.getString("uDecoder.noSlash"));
                 }
                 dec.append(res);
                 strPos += 3;
@@ -305,7 +362,10 @@ public final class UDecoder {
      * @return the decoded string
      * @exception IllegalArgumentException if a '%' character is not followed
      * by a valid 2-digit hexadecimal number
+     *
+     * @deprecated Unused. This will be removed in Tomcat 10 onwards
      */
+    @Deprecated
     public static String URLDecode(String str) {
         return URLDecode(str, StandardCharsets.ISO_8859_1);
     }

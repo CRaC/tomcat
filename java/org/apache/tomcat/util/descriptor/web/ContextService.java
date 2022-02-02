@@ -41,7 +41,7 @@ public class ContextService extends ResourceBase {
     private String displayname = null;
 
     public String getDisplayname() {
-        return (this.displayname);
+        return this.displayname;
     }
 
     public void setDisplayname(String displayname) {
@@ -54,7 +54,7 @@ public class ContextService extends ResourceBase {
     private String largeIcon = null;
 
     public String getLargeIcon() {
-        return (this.largeIcon);
+        return this.largeIcon;
     }
 
     public void setLargeIcon(String largeIcon) {
@@ -67,7 +67,7 @@ public class ContextService extends ResourceBase {
     private String smallIcon = null;
 
     public String getSmallIcon() {
-        return (this.smallIcon);
+        return this.smallIcon;
     }
 
     public void setSmallIcon(String smallIcon) {
@@ -95,7 +95,7 @@ public class ContextService extends ResourceBase {
     private String wsdlfile = null;
 
     public String getWsdlfile() {
-        return (this.wsdlfile);
+        return this.wsdlfile;
     }
 
     public void setWsdlfile(String wsdlfile) {
@@ -109,7 +109,7 @@ public class ContextService extends ResourceBase {
     private String jaxrpcmappingfile = null;
 
     public String getJaxrpcmappingfile() {
-        return (this.jaxrpcmappingfile);
+        return this.jaxrpcmappingfile;
     }
 
     public void setJaxrpcmappingfile(String jaxrpcmappingfile) {
@@ -130,7 +130,7 @@ public class ContextService extends ResourceBase {
     private String[] serviceqname = new String[2];
 
     public String[] getServiceqname() {
-        return (this.serviceqname);
+        return this.serviceqname;
     }
 
     public String getServiceqname(int i) {
@@ -176,8 +176,9 @@ public class ContextService extends ResourceBase {
     }
 
     public void addPortcomponent(String serviceendpoint, String portlink) {
-        if (portlink == null)
+        if (portlink == null) {
             portlink = "";
+        }
         this.setProperty(serviceendpoint, portlink);
     }
 
@@ -257,8 +258,8 @@ public class ContextService extends ResourceBase {
             sb.append(", handler=");
             sb.append(handlers);
         }
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 

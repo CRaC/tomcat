@@ -94,8 +94,9 @@ public class ConnectorStoreAppender extends StoreAppender {
                 printValue(writer, indent, key, value);
             }
         }
-        if (protocol != null && !"HTTP/1.1".equals(protocol))
+        if (protocol != null && !"HTTP/1.1".equals(protocol)) {
             super.printValue(writer, indent, "protocol", protocol);
+        }
 
     }
 
@@ -128,8 +129,9 @@ public class ConnectorStoreAppender extends StoreAppender {
             }
             if ("protocol".equals(descriptor.getName())
                     || "protocolHandlerClassName".equals(descriptor
-                            .getName()))
+                            .getName())) {
                 continue;
+            }
             propertyKeys.add(descriptor.getName());
         }
         // Add the properties of the protocol handler
@@ -262,7 +264,7 @@ public class ConnectorStoreAppender extends StoreAppender {
         boolean isPrint = super.isPrintValue(bean, bean2, attrName, desc);
         if (isPrint) {
             if ("jkHome".equals(attrName)) {
-                Connector connector = ((Connector) bean);
+                Connector connector = (Connector) bean;
                 File catalinaBase = getCatalinaBase();
                 File jkHomeBase = getJkHomeBase((String) connector
                         .getProperty("jkHome"), catalinaBase);
@@ -280,21 +282,22 @@ public class ConnectorStoreAppender extends StoreAppender {
             file = file.getCanonicalFile();
         } catch (IOException e) {
         }
-        return (file);
+        return file;
     }
 
     protected File getJkHomeBase(String jkHome, File appBase) {
 
         File jkHomeBase;
         File file = new File(jkHome);
-        if (!file.isAbsolute())
+        if (!file.isAbsolute()) {
             file = new File(appBase, jkHome);
+        }
         try {
             jkHomeBase = file.getCanonicalFile();
         } catch (IOException e) {
             jkHomeBase = file;
         }
-        return (jkHomeBase);
+        return jkHomeBase;
     }
 
 }

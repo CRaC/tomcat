@@ -29,6 +29,7 @@ import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
+import java.util.List;
 
 import javax.servlet.ServletContext;
 
@@ -210,8 +211,9 @@ public class StandardManager extends ManagerBase {
                         getWarnOnSessionAttributeFilterFailure())) {
                     Integer count = (Integer) ois.readObject();
                     int n = count.intValue();
-                    if (log.isDebugEnabled())
+                    if (log.isDebugEnabled()) {
                         log.debug("Loading " + n + " persisted sessions");
+                    }
                     for (int i = 0; i < n; i++) {
                         StandardSession session = getNewSession();
                         session.readObjectData(ois);
@@ -229,7 +231,9 @@ public class StandardManager extends ManagerBase {
                 } finally {
                     // Delete the persistent storage file
                     if (file.exists()) {
-                        file.delete();
+                        if (!file.delete()) {
+                            log.warn(sm.getString("standardManager.deletePersistedFileFail", file));
+                        }
                     }
                 }
             }
@@ -275,8 +279,9 @@ public class StandardManager extends ManagerBase {
      */
     protected void doUnload() throws IOException {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug(sm.getString("standardManager.unloading.debug"));
+        }
 
         if (sessions.isEmpty()) {
             log.debug(sm.getString("standardManager.unloading.nosessions"));
@@ -293,7 +298,7 @@ public class StandardManager extends ManagerBase {
         }
 
         // Keep a note of sessions that are expired
-        ArrayList<StandardSession> list = new ArrayList<>();
+        List<StandardSession> list = new ArrayList<>();
 
         try (FileOutputStream fos = new FileOutputStream(file.getAbsolutePath());
                 BufferedOutputStream bos = new BufferedOutputStream(fos);
@@ -384,8 +389,7 @@ public class StandardManager extends ManagerBase {
 
         // Expire all active sessions
         Session sessions[] = findSessions();
-        for (int i = 0; i < sessions.length; i++) {
-            Session session = sessions[i];
+        for (Session session : sessions) {
             try {
                 if (session.isValid()) {
                     session.expire();

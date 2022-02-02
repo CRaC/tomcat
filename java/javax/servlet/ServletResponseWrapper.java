@@ -19,6 +19,7 @@ package javax.servlet;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Locale;
+import java.util.ResourceBundle;
 
 /**
  * Provides a convenient implementation of the ServletResponse interface that
@@ -26,10 +27,14 @@ import java.util.Locale;
  * This class implements the Wrapper or Decorator pattern. Methods default to
  * calling through to the wrapped response object.
  *
- * @since v 2.3
+ * @since Servlet 2.3
  * @see javax.servlet.ServletResponse
  */
 public class ServletResponseWrapper implements ServletResponse {
+    private static final String LSTRING_FILE = "javax.servlet.LocalStrings";
+    private static final ResourceBundle lStrings =
+        ResourceBundle.getBundle(LSTRING_FILE);
+
     private ServletResponse response;
 
     /**
@@ -42,7 +47,7 @@ public class ServletResponseWrapper implements ServletResponse {
      */
     public ServletResponseWrapper(ServletResponse response) {
         if (response == null) {
-            throw new IllegalArgumentException("Response cannot be null");
+            throw new IllegalArgumentException(lStrings.getString("wrapper.nullResponse"));
         }
         this.response = response;
     }
@@ -66,7 +71,7 @@ public class ServletResponseWrapper implements ServletResponse {
      */
     public void setResponse(ServletResponse response) {
         if (response == null) {
-            throw new IllegalArgumentException("Response cannot be null");
+            throw new IllegalArgumentException(lStrings.getString("wrapper.nullResponse"));
         }
         this.response = response;
     }
@@ -75,7 +80,7 @@ public class ServletResponseWrapper implements ServletResponse {
      * The default behavior of this method is to call
      * setCharacterEncoding(String charset) on the wrapped response object.
      *
-     * @since 2.4
+     * @since Servlet 2.4
      */
     @Override
     public void setCharacterEncoding(String charset) {
@@ -142,7 +147,7 @@ public class ServletResponseWrapper implements ServletResponse {
      * The default behavior of this method is to return getContentType() on the
      * wrapped response object.
      *
-     * @since 2.4
+     * @since Servlet 2.4
      */
     @Override
     public String getContentType() {

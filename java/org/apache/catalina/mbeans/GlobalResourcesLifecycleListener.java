@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.mbeans;
 
 
@@ -32,6 +31,7 @@ import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
 import org.apache.catalina.Role;
+import org.apache.catalina.Server;
 import org.apache.catalina.User;
 import org.apache.catalina.UserDatabase;
 import org.apache.juli.logging.Log;
@@ -43,6 +43,8 @@ import org.apache.tomcat.util.modeler.Registry;
  * Implementation of <code>LifecycleListener</code> that instantiates the
  * set of MBeans associated with global JNDI resources that are subject to
  * management.
+ * <p>
+ * This listener must only be nested within {@link Server} elements.
  *
  * @author Craig R. McClanahan
  * @since 4.1
@@ -77,6 +79,10 @@ public class GlobalResourcesLifecycleListener implements LifecycleListener {
     public void lifecycleEvent(LifecycleEvent event) {
 
         if (Lifecycle.START_EVENT.equals(event.getType())) {
+            if (!(event.getLifecycle() instanceof Server)) {
+                log.warn("This listener must only be nested within Server elements, but is in [" +
+                        event.getLifecycle().getClass().getSimpleName() + "].");
+            }
             component = event.getLifecycle();
             createMBeans();
         } else if (Lifecycle.STOP_EVENT.equals(event.getType())) {

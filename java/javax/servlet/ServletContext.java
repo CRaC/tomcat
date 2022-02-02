@@ -51,9 +51,16 @@ import javax.servlet.descriptor.JspConfigDescriptor;
  */
 public interface ServletContext {
 
+    /**
+     * The name of the ServletContext attribute that holds the temporary file
+     * location for the web application.
+     */
     public static final String TEMPDIR = "javax.servlet.context.tempdir";
 
     /**
+     * The name of the ServletContext attribute that holds the ordered list of
+     * web fragments for this web application.
+     *
      * @since Servlet 3.0
      */
     public static final String ORDERED_LIBS = "javax.servlet.context.orderedLibs";
@@ -109,7 +116,11 @@ public interface ServletContext {
     public int getMinorVersion();
 
     /**
-     * @return TODO
+     * Obtain the major version of the servlet specification for which this web
+     * application is implemented.
+     *
+     * @return The major version declared in web.xml
+     *
      * @throws UnsupportedOperationException    If called from a
      *    {@link ServletContextListener#contextInitialized(ServletContextEvent)}
      *    method of a {@link ServletContextListener} that was not defined in a
@@ -118,12 +129,16 @@ public interface ServletContext {
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
      *
-     * @since Servlet 3.0 TODO SERVLET3 - Add comments
+     * @since Servlet 3.0
      */
     public int getEffectiveMajorVersion();
 
     /**
-     * @return TODO
+     * Obtain the minor version of the servlet specification for which this web
+     * application is implemented.
+     *
+     * @return The minor version declared in web.xml
+     *
      * @throws UnsupportedOperationException    If called from a
      *    {@link ServletContextListener#contextInitialized(ServletContextEvent)}
      *    method of a {@link ServletContextListener} that was not defined in a
@@ -131,7 +146,8 @@ public interface ServletContext {
      *    {@link javax.servlet.annotation.WebListener}. For example, a
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
-     * @since Servlet 3.0 TODO SERVLET3 - Add comments
+     *
+     * @since Servlet 3.0
      */
     public int getEffectiveMinorVersion();
 
@@ -429,14 +445,17 @@ public interface ServletContext {
      * parameter does not exist.
      * <p>
      * This method can make available configuration information useful to an
-     * entire "web application". For example, it can provide a webmaster's email
-     * address or the name of a system that holds critical data.
+     * entire "web application". For example, it can provide a web site
+     * administrator's email address or the name of a system that holds critical
+     * data.
      *
      * @param name
      *            a <code>String</code> containing the name of the parameter
      *            whose value is requested
      * @return a <code>String</code> containing the value of the initialization
      *         parameter
+     * @throws NullPointerException If the provided parameter name is
+     *         <code>null</code>
      * @see ServletConfig#getInitParameter
      */
     public String getInitParameter(String name);
@@ -469,6 +488,8 @@ public interface ServletContext {
      *    {@link javax.servlet.annotation.WebListener}. For example, a
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
+     * @throws NullPointerException If the provided parameter name is
+     *         <code>null</code>
      * @since Servlet 3.0
      */
     public boolean setInitParameter(String name, String value);
@@ -490,6 +511,8 @@ public interface ServletContext {
      *            a <code>String</code> specifying the name of the attribute
      * @return an <code>Object</code> containing the value of the attribute, or
      *         <code>null</code> if no attribute exists matching the given name
+     * @throws NullPointerException If the provided attribute name is
+     *         <code>null</code>
      * @see ServletContext#getAttributeNames
      */
     public Object getAttribute(String name);
@@ -500,6 +523,7 @@ public interface ServletContext {
      * method with an attribute name to get the value of an attribute.
      *
      * @return an <code>Enumeration</code> of attribute names
+     *
      * @see #getAttribute
      */
     public Enumeration<String> getAttributeNames();
@@ -523,6 +547,8 @@ public interface ServletContext {
      *            a <code>String</code> specifying the name of the attribute
      * @param object
      *            an <code>Object</code> representing the attribute to be bound
+     * @throws NullPointerException If the provided attribute name is
+     *         <code>null</code>
      */
     public void setAttribute(String name, Object object);
 
@@ -609,11 +635,15 @@ public interface ServletContext {
             Class<? extends Servlet> servletClass);
 
     /**
-     * TODO SERVLET3 - Add comments
-     * @param <T> TODO
-     * @param c   TODO
-     * @return TODO
-     * @throws ServletException TODO
+     * Create an Servlet instance using the given class. The instance is just
+     * created. No initialisation occurs.
+     *
+     * @param <T> The type for the given class
+     * @param c   The the class for which an instance should be created
+     *
+     * @return The created Servlet instance.
+     *
+     * @throws ServletException If the servlet instance cannot be created.
      * @throws UnsupportedOperationException    If called from a
      *    {@link ServletContextListener#contextInitialized(ServletContextEvent)}
      *    method of a {@link ServletContextListener} that was not defined in a
@@ -621,6 +651,7 @@ public interface ServletContext {
      *    {@link javax.servlet.annotation.WebListener}. For example, a
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
+     *
      * @since Servlet 3.0
      */
     public <T extends Servlet> T createServlet(Class<T> c)
@@ -648,8 +679,12 @@ public interface ServletContext {
     public ServletRegistration getServletRegistration(String servletName);
 
     /**
-     * TODO SERVLET3 - Add comments
-     * @return TODO
+     * Obtain a Map of servlet names to servlet registrations for all servlets
+     * registered with this context.
+     *
+     * @return A Map of servlet names to servlet registrations for all servlets
+     *         registered with this context
+     *
      * @throws UnsupportedOperationException    If called from a
      *    {@link ServletContextListener#contextInitialized(ServletContextEvent)}
      *    method of a {@link ServletContextListener} that was not defined in a
@@ -657,6 +692,7 @@ public interface ServletContext {
      *    {@link javax.servlet.annotation.WebListener}. For example, a
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
+     *
      * @since Servlet 3.0
      */
     public Map<String, ? extends ServletRegistration> getServletRegistrations();
@@ -723,10 +759,15 @@ public interface ServletContext {
             Class<? extends Filter> filterClass);
 
     /**
-     * TODO SERVLET3 - Add comments
-     * @param <T> TODO
-     * @param c   TODO
-     * @return TODO
+     * Create a Filter instance using the given class. The instance is just
+     * created. No initialisation occurs.
+     *
+     * @param <T> The type for the given class
+     * @param c   The the class for which an instance should be created
+     *
+     * @return The created Filter instance.
+     *
+     * @throws ServletException If the Filter instance cannot be created
      * @throws UnsupportedOperationException    If called from a
      *    {@link ServletContextListener#contextInitialized(ServletContextEvent)}
      *    method of a {@link ServletContextListener} that was not defined in a
@@ -734,8 +775,8 @@ public interface ServletContext {
      *    {@link javax.servlet.annotation.WebListener}. For example, a
      *    {@link ServletContextListener} defined in a TLD would not be able to
      *    use this method.
-     * @throws ServletException TODO
-     * @since Servlet 3.
+     *
+     * @since Servlet 3.0
      */
     public <T extends Filter> T createFilter(Class<T> c) throws ServletException;
 

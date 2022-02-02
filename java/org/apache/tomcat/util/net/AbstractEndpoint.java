@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -156,6 +157,11 @@ public abstract class AbstractEndpoint<S> implements Resource {
     private static final int MAX_ERROR_DELAY = 1600;
 
 
+    public static long toTimeout(long timeout) {
+        // Many calls can't do infinite timeout so use Long.MAX_VALUE if timeout is <= 0
+        return (timeout > 0) ? timeout : Long.MAX_VALUE;
+    }
+
     // ----------------------------------------------------------------- Fields
 
     /**
@@ -189,7 +195,8 @@ public abstract class AbstractEndpoint<S> implements Resource {
     }
 
     /**
-     * Threads used to accept new connections and pass them to worker threads.
+     * Thread used to accept new connections and pass them to worker threads.
+     * This is hard-coded to use a single acceptor.
      */
     protected Acceptor[] acceptors;
 
@@ -203,11 +210,15 @@ public abstract class AbstractEndpoint<S> implements Resource {
     // ----------------------------------------------------------------- Properties
 
     private String defaultSSLHostConfigName = SSLHostConfig.DEFAULT_SSL_HOST_NAME;
+    /**
+     * @return The host name for the default SSL configuration for this endpoint
+     *         - always in lower case.
+     */
     public String getDefaultSSLHostConfigName() {
         return defaultSSLHostConfigName;
     }
     public void setDefaultSSLHostConfigName(String defaultSSLHostConfigName) {
-        this.defaultSSLHostConfigName = defaultSSLHostConfigName;
+        this.defaultSSLHostConfigName = defaultSSLHostConfigName.toLowerCase(Locale.ENGLISH);
     }
 
 
@@ -284,12 +295,15 @@ public abstract class AbstractEndpoint<S> implements Resource {
         if (hostName == null) {
             return null;
         }
-        // Host names are case insensitive
-        if (hostName.equalsIgnoreCase(getDefaultSSLHostConfigName())) {
+        // Host names are case insensitive but stored/processed in lower case
+        // internally because they are used as keys in a ConcurrentMap where
+        // keys are compared in a case sensitive manner.
+        String hostNameLower = hostName.toLowerCase(Locale.ENGLISH);
+        if (hostNameLower.equals(getDefaultSSLHostConfigName())) {
             throw new IllegalArgumentException(
                     sm.getString("endpoint.removeDefaultSslHostConfig", hostName));
         }
-        SSLHostConfig sslHostConfig = sslHostConfigs.remove(hostName);
+        SSLHostConfig sslHostConfig = sslHostConfigs.remove(hostNameLower);
         unregisterJmx(sslHostConfig);
         return sslHostConfig;
     }
@@ -302,7 +316,13 @@ public abstract class AbstractEndpoint<S> implements Resource {
      *                 reloaded. This must match a current SSL host
      */
     public void reloadSslHostConfig(String hostName) {
-        SSLHostConfig sslHostConfig = sslHostConfigs.get(hostName);
+        // Host names are case insensitive but stored/processed in lower case
+        // internally because they are used as keys in a ConcurrentMap where
+        // keys are compared in a case sensitive manner.
+        // This method can be called via various paths so convert the supplied
+        // host name to lower case here to ensure the conversion occurs whatever
+        // the call path.
+        SSLHostConfig sslHostConfig = sslHostConfigs.get(hostName.toLowerCase(Locale.ENGLISH));
         if (sslHostConfig == null) {
             throw new IllegalArgumentException(
                     sm.getString("endpoint.unknownSslHostName", hostName));
@@ -361,7 +381,18 @@ public abstract class AbstractEndpoint<S> implements Resource {
     }
 
 
-
+    /**
+     * Look up the SSLHostConfig for the given host name. Lookup order is:
+     * <ol>
+     * <li>exact match</li>
+     * <li>wild card match</li>
+     * <li>default SSLHostConfig</li>
+     * </ol>
+     *
+     * @param sniHostName   Host name - must be in lower case
+     *
+     * @return The SSLHostConfig for the given host name.
+     */
     protected SSLHostConfig getSSLHostConfig(String sniHostName) {
         SSLHostConfig result = null;
 
@@ -419,14 +450,39 @@ public abstract class AbstractEndpoint<S> implements Resource {
 
 
     /**
-     * Acceptor thread count.
+     * Unused.
+     *
+     * @deprecated  This attribute is hard-coded to {@code 1} and is no longer
+     *              configurable.
      */
+    @Deprecated
     protected int acceptorThreadCount = 1;
 
+    /**
+     * Unused.
+     *
+     * @param acceptorThreadCount   Ignored
+     *
+     * @deprecated  This attribute is hard-coded to {@code 1} and is no longer
+     *              configurable.
+     */
+    @Deprecated
     public void setAcceptorThreadCount(int acceptorThreadCount) {
-        this.acceptorThreadCount = acceptorThreadCount;
+        // NO-OP;
     }
-    public int getAcceptorThreadCount() { return acceptorThreadCount; }
+
+    /**
+     * Unused.
+     *
+     * @return  Always returns {@code 1}
+     *
+     * @deprecated  This attribute is hard-coded to {@code 1} and is no longer
+     *              configurable.
+     */
+    @Deprecated
+    public int getAcceptorThreadCount() {
+        return 1;
+    }
 
 
     /**
@@ -540,7 +596,9 @@ public abstract class AbstractEndpoint<S> implements Resource {
      * is 100.
      */
     private int acceptCount = 100;
-    public void setAcceptCount(int acceptCount) { if (acceptCount > 0) this.acceptCount = acceptCount; }
+    public void setAcceptCount(int acceptCount) { if (acceptCount > 0) {
+        this.acceptCount = acceptCount;
+    } }
     public int getAcceptCount() { return acceptCount; }
     @Deprecated
     public void setBacklog(int backlog) { setAcceptCount(backlog); }
@@ -564,7 +622,7 @@ public abstract class AbstractEndpoint<S> implements Resource {
     private Integer keepAliveTimeout = null;
     public int getKeepAliveTimeout() {
         if (keepAliveTimeout == null) {
-            return getSoTimeout();
+            return getConnectionTimeout();
         } else {
             return keepAliveTimeout.intValue();
         }
@@ -742,6 +800,14 @@ public abstract class AbstractEndpoint<S> implements Resource {
     private boolean daemon = true;
     public void setDaemon(boolean b) { daemon = b; }
     public boolean getDaemon() { return daemon; }
+
+
+    /**
+     * Expose asynchronous IO capability.
+     */
+    private boolean useAsyncIO = true;
+    public void setUseAsyncIO(boolean useAsyncIO) { this.useAsyncIO = useAsyncIO; }
+    public boolean getUseAsyncIO() { return useAsyncIO; }
 
 
     protected abstract boolean getDeferAccept();
@@ -947,10 +1013,12 @@ public abstract class AbstractEndpoint<S> implements Resource {
                 try (java.net.Socket s = new java.net.Socket()) {
                     int stmo = 2 * 1000;
                     int utmo = 2 * 1000;
-                    if (getSocketProperties().getSoTimeout() > stmo)
+                    if (getSocketProperties().getSoTimeout() > stmo) {
                         stmo = getSocketProperties().getSoTimeout();
-                    if (getSocketProperties().getUnlockTimeout() > utmo)
+                    }
+                    if (getSocketProperties().getUnlockTimeout() > utmo) {
                         utmo = getSocketProperties().getUnlockTimeout();
+                    }
                     s.setSoTimeout(stmo);
                     s.setSoLinger(getSocketProperties().getSoLingerOn(),getSocketProperties().getSoLingerTime());
                     if (getLog().isDebugEnabled()) {
@@ -976,12 +1044,28 @@ public abstract class AbstractEndpoint<S> implements Resource {
                 }
             }
             // Wait for upto 1000ms acceptor threads to unlock
+            // Should only be one thread but retain this code in case the
+            // acceptor start has been customised.
             long waitLeft = 1000;
             for (Acceptor acceptor : acceptors) {
                 while (waitLeft > 0 &&
                         acceptor.getState() == AcceptorState.RUNNING) {
                     Thread.sleep(5);
                     waitLeft -= 5;
+                }
+            }
+            // Wait for up to 1000ms acceptor threads to unlock. Particularly
+            // for the unit tests, we want to exit this loop as quickly as
+            // possible. However, we also don't want to trigger excessive CPU
+            // usage if the unlock takes longer than expected. Therefore, we
+            // initially wait for the unlock in a tight loop but if that takes
+            // more than 1ms we start using short sleeps to reduce CPU usage.
+            long startTime = System.nanoTime();
+            for (Acceptor acceptor : acceptors) {
+                while (startTime + 1_000_000_000 > System.nanoTime() && acceptor.getState() == AcceptorState.RUNNING) {
+                    if (startTime + 1_000_000 < System.nanoTime()) {
+                        Thread.sleep(1);
+                    }
                 }
             }
         } catch(Throwable t) {
@@ -1119,7 +1203,7 @@ public abstract class AbstractEndpoint<S> implements Resource {
             Registry.getRegistry(null, null).registerComponent(this, oname, null);
 
             ObjectName socketPropertiesOname = new ObjectName(domain +
-                    ":type=ThreadPool,name=\"" + getName() + "\",subType=SocketProperties");
+                    ":type=SocketProperties,name=\"" + getName() + "\"");
             socketProperties.setObjectName(socketPropertiesOname);
             Registry.getRegistry(null, null).registerComponent(socketProperties, socketPropertiesOname, null);
 
@@ -1207,18 +1291,15 @@ public abstract class AbstractEndpoint<S> implements Resource {
     }
 
     protected final void startAcceptorThreads() {
-        int count = getAcceptorThreadCount();
-        acceptors = new Acceptor[count];
+        acceptors = new Acceptor[1];
 
-        for (int i = 0; i < count; i++) {
-            acceptors[i] = createAcceptor();
-            String threadName = getName() + "-Acceptor-" + i;
-            acceptors[i].setThreadName(threadName);
-            Thread t = new Thread(acceptors[i], threadName);
-            t.setPriority(getAcceptorThreadPriority());
-            t.setDaemon(getDaemon());
-            t.start();
-        }
+        acceptors[0] = createAcceptor();
+        String threadName = getName() + "-Acceptor-0";
+        acceptors[0].setThreadName(threadName);
+        Thread t = new Thread(acceptors[0], threadName);
+        t.setPriority(getAcceptorThreadPriority());
+        t.setDaemon(getDaemon());
+        t.start();
     }
 
 
@@ -1275,7 +1356,9 @@ public abstract class AbstractEndpoint<S> implements Resource {
     protected abstract Log getLog();
 
     protected LimitLatch initializeConnectionLatch() {
-        if (maxConnections==-1) return null;
+        if (maxConnections==-1) {
+            return null;
+        }
         if (connectionLimitLatch==null) {
             connectionLimitLatch = new LimitLatch(getMaxConnections());
         }
@@ -1284,18 +1367,26 @@ public abstract class AbstractEndpoint<S> implements Resource {
 
     protected void releaseConnectionLatch() {
         LimitLatch latch = connectionLimitLatch;
-        if (latch!=null) latch.releaseAll();
+        if (latch!=null) {
+            latch.releaseAll();
+        }
         connectionLimitLatch = null;
     }
 
     protected void countUpOrAwaitConnection() throws InterruptedException {
-        if (maxConnections==-1) return;
+        if (maxConnections==-1) {
+            return;
+        }
         LimitLatch latch = connectionLimitLatch;
-        if (latch!=null) latch.countUpOrAwait();
+        if (latch!=null) {
+            latch.countUpOrAwait();
+        }
     }
 
     protected long countDownConnection() {
-        if (maxConnections==-1) return -1;
+        if (maxConnections==-1) {
+            return -1;
+        }
         LimitLatch latch = connectionLimitLatch;
         if (latch!=null) {
             long result = latch.countDown();
@@ -1303,7 +1394,9 @@ public abstract class AbstractEndpoint<S> implements Resource {
                 getLog().warn(sm.getString("endpoint.warn.incorrectConnectionCount"));
             }
             return result;
-        } else return -1;
+        } else {
+            return -1;
+        }
     }
 
     /**

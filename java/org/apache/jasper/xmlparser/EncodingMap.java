@@ -22,7 +22,6 @@
  * information on the Apache Software Foundation, please see
  * <http://www.apache.org/>.
  */
-
 package org.apache.jasper.xmlparser;
 
 import java.util.Hashtable;
@@ -33,7 +32,7 @@ import java.util.Hashtable;
  * encoding names used in XML instance documents <strong>must</strong>
  * be the IANA encoding names specified or one of the aliases for those names
  * which IANA defines.
- * <TABLE WIDTH="100%">
+ * <TABLE>
  *  <caption>Mapping of IANA encoding names and Java encoding names</caption>
  *  <TR>
  *      <TD>

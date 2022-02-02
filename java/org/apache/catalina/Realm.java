@@ -35,29 +35,13 @@ import org.ietf.jgss.GSSContext;
  *
  * @author Craig R. McClanahan
  */
-public interface Realm {
-
-
-    // ------------------------------------------------------------- Properties
-
-    /**
-     * @return the Container with which this Realm has been associated.
-     */
-    public Container getContainer();
-
-
-    /**
-     * Set the Container with which this Realm has been associated.
-     *
-     * @param container The associated Container
-     */
-    public void setContainer(Container container);
-
+public interface Realm extends Contained {
 
     /**
      * @return the CredentialHandler configured for this Realm.
      */
     public CredentialHandler getCredentialHandler();
+
 
     /**
      * Set the CredentialHandler to be used by this Realm.
@@ -66,8 +50,6 @@ public interface Realm {
      */
     public void setCredentialHandler(CredentialHandler credentialHandler);
 
-
-    // --------------------------------------------------------- Public Methods
 
     /**
      * Add a property change listener to this component.
@@ -229,7 +211,9 @@ public interface Realm {
      * Return roles associated with given principal
      * @param principal the {@link Principal} to get the roles for.
      * @return principal roles
+     * @deprecated This will be removed in Tomcat 10.
      */
+    @Deprecated
     public String[] getRoles(Principal principal);
 
 

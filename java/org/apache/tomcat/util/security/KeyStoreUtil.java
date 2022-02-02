@@ -34,6 +34,9 @@ public class KeyStoreUtil {
      * Loads a KeyStore from an InputStream working around the known JDK bug
      * https://bugs.openjdk.java.net/browse/JDK-8157404.
      *
+     * This code can be removed once the minimum Java version for Tomcat is 13.
+     *
+     *
      * @param keystore The KeyStore to load from the InputStream
      * @param is The InputStream to use to populate the KeyStore
      * @param storePass The password to access the KeyStore
@@ -49,9 +52,7 @@ public class KeyStoreUtil {
      */
     public static void load(KeyStore keystore, InputStream is, char[] storePass)
             throws NoSuchAlgorithmException, CertificateException, IOException {
-        if (is == null) {
-            keystore.load(null, storePass);
-        } else {
+        if (keystore.getType().equals("PKCS12")) {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             byte[] buf = new byte[8192];
             int numRead;
@@ -59,11 +60,13 @@ public class KeyStoreUtil {
                 baos.write(buf, 0, numRead);
             }
             baos.close();
-            // Don't close is. That remains the callers responsibilty.
+            // Don't close is. That remains the callers responsibility.
 
             ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
 
             keystore.load(bais, storePass);
+        } else {
+            keystore.load(is, storePass);
         }
     }
 }

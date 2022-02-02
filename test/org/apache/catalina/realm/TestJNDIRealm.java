@@ -20,6 +20,8 @@ import java.lang.reflect.Field;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -28,6 +30,9 @@ import javax.naming.directory.DirContext;
 import javax.naming.directory.InitialDirContext;
 import javax.naming.directory.SearchControls;
 import javax.naming.directory.SearchResult;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
 
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -87,7 +92,7 @@ public class TestJNDIRealm {
                 realm.authenticate(USER, expectedResponse, NONCE, null, null, null, REALM, HA2);
 
         // THEN
-        Assert.assertTrue(principal instanceof GenericPrincipal);
+        assertThat(principal, instanceOf(GenericPrincipal.class));
         Assert.assertEquals(PASSWORD, ((GenericPrincipal)principal).getPassword());
     }
 
@@ -105,8 +110,33 @@ public class TestJNDIRealm {
                 realm.authenticate(USER, expectedResponse, NONCE, null, null, null, REALM, HA2);
 
         // THEN
-        Assert.assertTrue(principal instanceof GenericPrincipal);
+        assertThat(principal, instanceOf(GenericPrincipal.class));
         Assert.assertEquals(ha1(), ((GenericPrincipal)principal).getPassword());
+    }
+
+    @Test
+    public void testErrorRealm() throws Exception {
+        Context context = new TesterContext();
+        final JNDIRealm realm = new JNDIRealm();
+        realm.setContainer(context);
+        realm.setUserSearch("");
+        // Connect to something that will fail
+        realm.setConnectionURL("ldap://127.0.0.1:12345");
+        realm.start();
+
+        final CountDownLatch latch = new CountDownLatch(3);
+        Runnable testThread = new Runnable() {
+            @Override
+            public void run() {
+                realm.authenticate("foo", "bar");
+                latch.countDown();
+            }
+        };
+        (new Thread(testThread)).start();
+        (new Thread(testThread)).start();
+        (new Thread(testThread)).start();
+
+        Assert.assertTrue(latch.await(30, TimeUnit.SECONDS));
     }
 
 
@@ -117,9 +147,12 @@ public class TestJNDIRealm {
         realm.setContainer(context);
         realm.setUserSearch("");
 
-        Field field = JNDIRealm.class.getDeclaredField("context");
+        // Usually everything is created in create() but that's not the case here
+        Field field = JNDIRealm.class.getDeclaredField("singleConnection");
         field.setAccessible(true);
-        field.set(realm, mockDirContext(mockSearchResults(password)));
+        Field field2 = JNDIRealm.JNDIConnection.class.getDeclaredField("context");
+        field2.setAccessible(true);
+        field2.set(field.get(realm), mockDirContext(mockSearchResults(password)));
 
         realm.start();
 

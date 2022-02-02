@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import java.io.IOException;
@@ -33,6 +32,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
+import org.apache.catalina.Server;
 import org.apache.catalina.startup.SafeForkJoinWorkerThreadFactory;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
@@ -56,13 +56,13 @@ import org.w3c.dom.ls.DOMImplementationLS;
  * Locked files usually occur when a resource inside a JAR is accessed without
  * first disabling Jar URL connection caching. The workaround is to disable this
  * caching by default.
+ * <p>
+ * This listener must only be nested within {@link Server} elements.
  */
 public class JreMemoryLeakPreventionListener implements LifecycleListener {
 
-    private static final Log log =
-        LogFactory.getLog(JreMemoryLeakPreventionListener.class);
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    private static final Log log = LogFactory.getLog(JreMemoryLeakPreventionListener.class);
+    private static final StringManager sm = StringManager.getManager(JreMemoryLeakPreventionListener.class);
 
     private static final String FORK_JOIN_POOL_THREAD_FACTORY_PROPERTY =
             "java.util.concurrent.ForkJoinPool.common.threadFactory";
@@ -229,11 +229,14 @@ public class JreMemoryLeakPreventionListener implements LifecycleListener {
     }
 
 
-
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
         // Initialise these classes when Tomcat starts
         if (Lifecycle.BEFORE_INIT_EVENT.equals(event.getType())) {
+            if (!(event.getLifecycle() instanceof Server)) {
+                log.warn(sm.getString("listener.notServer",
+                        event.getLifecycle().getClass().getSimpleName()));
+            }
 
             /*
              * First call to this loads all drivers visible to the current class
@@ -252,8 +255,7 @@ public class JreMemoryLeakPreventionListener implements LifecycleListener {
 
             ClassLoader loader = Thread.currentThread().getContextClassLoader();
 
-            try
-            {
+            try {
                 // Use the system classloader as the victim for all this
                 // ClassLoader pinning we're about to do.
                 Thread.currentThread().setContextClassLoader(

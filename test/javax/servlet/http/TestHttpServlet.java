@@ -22,15 +22,24 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.servlet.AsyncContext;
+import javax.servlet.Servlet;
 import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.WriteListener;
 
 import org.junit.Assert;
 import org.junit.Test;
 
+import org.apache.catalina.Context;
+import org.apache.catalina.Wrapper;
 import org.apache.catalina.core.StandardContext;
+import org.apache.catalina.startup.SimpleHttpClient;
+import org.apache.catalina.startup.TesterServlet;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.collections.CaseInsensitiveKeyMap;
 
 public class TestHttpServlet extends TomcatBaseTest {
 
@@ -92,13 +101,13 @@ public class TestHttpServlet extends TomcatBaseTest {
 
         tomcat.start();
 
-        Map<String,List<String>> resHeaders= new HashMap<>();
+        Map<String,List<String>> resHeaders= new CaseInsensitiveKeyMap<>();
         String path = "http://localhost:" + getPort() + "/outer";
         ByteChunk out = new ByteChunk();
 
         int rc = getUrl(path, out, resHeaders);
         Assert.assertEquals(HttpServletResponse.SC_OK, rc);
-        String length = resHeaders.get("Content-Length").get(0);
+        String length = getSingleHeader("Content-Length", resHeaders);
         Assert.assertEquals(Long.parseLong(length), out.getLength());
         out.recycle();
 
@@ -108,6 +117,220 @@ public class TestHttpServlet extends TomcatBaseTest {
         Assert.assertEquals(length, resHeaders.get("Content-Length").get(0));
 
         tomcat.stop();
+    }
+
+
+    @Test
+    public void testHeadWithChunking() throws Exception {
+        doTestHead(new ChunkingServlet());
+    }
+
+
+    @Test
+    public void testHeadWithResetBufferWriter() throws Exception {
+        doTestHead(new ResetBufferServlet(true));
+    }
+
+
+    @Test
+    public void testHeadWithResetBufferStream() throws Exception {
+        doTestHead(new ResetBufferServlet(false));
+    }
+
+
+    @Test
+    public void testHeadWithResetWriter() throws Exception {
+        doTestHead(new ResetServlet(true));
+    }
+
+
+    @Test
+    public void testHeadWithResetStream() throws Exception {
+        doTestHead(new ResetServlet(false));
+    }
+
+
+    @Test
+    public void testHeadWithNonBlocking() throws Exception {
+        // Less than buffer size
+        doTestHead(new NonBlockingWriteServlet(4 * 1024));
+    }
+
+
+    private void doTestHead(Servlet servlet) throws Exception {
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
+
+        Wrapper w = Tomcat.addServlet(ctx, "TestServlet", servlet);
+        // Not all need/use this but it is simpler to set it for all
+        w.setAsyncSupported(true);
+        ctx.addServletMappingDecoded("/test", "TestServlet");
+
+        tomcat.start();
+
+        Map<String,List<String>> getHeaders = new CaseInsensitiveKeyMap<>();
+        String path = "http://localhost:" + getPort() + "/test";
+        ByteChunk out = new ByteChunk();
+
+        int rc = getUrl(path, out, getHeaders);
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+        out.recycle();
+
+        Map<String,List<String>> headHeaders = new HashMap<>();
+        rc = headUrl(path, out, headHeaders);
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+
+        // Headers should be the same (apart from Date)
+        Assert.assertEquals(getHeaders.size(), headHeaders.size());
+        for (Map.Entry<String, List<String>> getHeader : getHeaders.entrySet()) {
+            String headerName = getHeader.getKey();
+            if ("date".equalsIgnoreCase(headerName)) {
+                continue;
+            }
+            Assert.assertTrue(headerName, headHeaders.containsKey(headerName));
+            List<String> getValues = getHeader.getValue();
+            List<String> headValues = headHeaders.get(headerName);
+            Assert.assertEquals(getValues.size(), headValues.size());
+            for (String value : getValues) {
+                Assert.assertTrue(headValues.contains(value));
+            }
+        }
+
+        tomcat.stop();
+    }
+
+
+    @Test
+    public void testDoOptions() throws Exception {
+        doTestDoOptions(new OptionsServlet(), "GET, HEAD, OPTIONS");
+    }
+
+
+    @Test
+    public void testDoOptionsSub() throws Exception {
+        doTestDoOptions(new OptionsServletSub(), "GET, HEAD, POST, OPTIONS");
+    }
+
+
+    private void doTestDoOptions(Servlet servlet, String expectedAllow) throws Exception{
+        Tomcat tomcat = getTomcatInstance();
+
+        // No file system docBase required
+        StandardContext ctx = (StandardContext) tomcat.addContext("", null);
+
+        // Map the test Servlet
+        Tomcat.addServlet(ctx, "servlet", servlet);
+        ctx.addServletMappingDecoded("/", "servlet");
+
+        tomcat.start();
+
+        Map<String,List<String>> resHeaders= new HashMap<>();
+        int rc = methodUrl("http://localhost:" + getPort() + "/", new ByteChunk(),
+               DEFAULT_CLIENT_TIMEOUT_MS, null, resHeaders, "OPTIONS");
+
+        Assert.assertEquals(HttpServletResponse.SC_OK, rc);
+        Assert.assertEquals(expectedAllow, resHeaders.get("Allow").get(0));
+    }
+
+
+    @Test
+    public void testUnimplementedMethodHttp09() throws Exception {
+        doTestUnimplementedMethod("0.9");
+    }
+
+
+    @Test
+    public void testUnimplementedMethodHttp10() throws Exception {
+        doTestUnimplementedMethod("1.0");
+    }
+
+
+    @Test
+    public void testUnimplementedMethodHttp11() throws Exception {
+        doTestUnimplementedMethod("1.1");
+    }
+
+
+    /*
+     * See org.apache.coyote.http2.TestHttpServlet for the HTTP/2 version of
+     * this test. It was placed in that package because it needed access to
+     * package private classes.
+     */
+
+
+    private void doTestUnimplementedMethod(String httpVersion) {
+        StringBuilder request = new StringBuilder("PUT /test");
+        boolean isHttp09 = "0.9".equals(httpVersion);
+        boolean isHttp10 = "1.0".equals(httpVersion);
+
+        if (!isHttp09) {
+            request.append(" HTTP/");
+            request.append(httpVersion);
+        }
+        request.append(SimpleHttpClient.CRLF);
+
+        request.append("Host: localhost:8080");
+        request.append(SimpleHttpClient.CRLF);
+
+        request.append("Connection: close");
+        request.append(SimpleHttpClient.CRLF);
+
+        request.append(SimpleHttpClient.CRLF);
+
+        Client client = new Client(request.toString(), "0.9".equals(httpVersion));
+
+        client.doRequest();
+
+        if (isHttp09) {
+            Assert.assertTrue( client.getResponseBody(), client.getResponseBody().contains(" 400 "));
+        } else if (isHttp10) {
+            Assert.assertTrue(client.getResponseLine(), client.isResponse400());
+        } else {
+            Assert.assertTrue(client.getResponseLine(), client.isResponse405());
+        }
+    }
+
+
+    private class Client extends SimpleHttpClient {
+
+        public Client(String request, boolean isHttp09) {
+            setRequest(new String[] {request});
+            setUseHttp09(isHttp09);
+        }
+
+        private Exception doRequest() {
+
+            Tomcat tomcat = getTomcatInstance();
+
+            Context root = tomcat.addContext("", TEMP_DIR);
+            Tomcat.addServlet(root, "TesterServlet", new TesterServlet());
+            root.addServletMappingDecoded("/test", "TesterServlet");
+
+            try {
+                tomcat.start();
+                setPort(tomcat.getConnector().getLocalPort());
+                setRequestPause(20);
+
+                // Open connection
+                connect();
+
+                processRequest(); // blocks until response has been read
+
+                // Close the connection
+                disconnect();
+            } catch (Exception e) {
+                e.printStackTrace();
+                return e;
+            }
+            return null;
+        }
+
+        @Override
+        public boolean isResponseBodyOK() {
+            return false;
+        }
     }
 
 
@@ -139,6 +362,169 @@ public class TestHttpServlet extends TomcatBaseTest {
             resp.setCharacterEncoding("UTF-8");
             PrintWriter pw = resp.getWriter();
             pw.println("Included");
+        }
+    }
+
+
+    private static class ChunkingServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            resp.setCharacterEncoding("UTF-8");
+            PrintWriter pw = resp.getWriter();
+            // Trigger chunking
+            pw.write(new char[8192 * 16]);
+            pw.println("Data");
+        }
+    }
+
+
+    private static class ResetBufferServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final boolean useWriter;
+
+        public ResetBufferServlet(boolean useWriter) {
+            this.useWriter = useWriter;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            resp.setCharacterEncoding("UTF-8");
+
+            if (useWriter) {
+                PrintWriter pw = resp.getWriter();
+                pw.write(new char[4 * 1024]);
+                resp.resetBuffer();
+                pw.write(new char[4 * 1024]);
+            } else {
+                ServletOutputStream sos = resp.getOutputStream();
+                sos.write(new byte [4 * 1024]);
+                resp.resetBuffer();
+                sos.write(new byte [4 * 1024]);
+            }
+        }
+    }
+
+
+    private static class ResetServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final boolean useWriter;
+
+        public ResetServlet(boolean useWriter) {
+            this.useWriter = useWriter;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            resp.setCharacterEncoding("UTF-8");
+
+            if (useWriter) {
+                PrintWriter pw = resp.getWriter();
+                resp.addHeader("aaa", "bbb");
+                pw.write(new char[4 * 1024]);
+                resp.resetBuffer();
+                resp.addHeader("ccc", "ddd");
+                pw.write(new char[4 * 1024]);
+            } else {
+                ServletOutputStream sos = resp.getOutputStream();
+                resp.addHeader("aaa", "bbb");
+                sos.write(new byte [4 * 1024]);
+                resp.resetBuffer();
+                resp.addHeader("ccc", "ddd");
+                sos.write(new byte [4 * 1024]);
+            }
+        }
+    }
+
+
+    private static class NonBlockingWriteServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        private final int bytesToWrite;
+
+        public NonBlockingWriteServlet(int bytesToWrite) {
+            this.bytesToWrite = bytesToWrite;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            AsyncContext ac = req.startAsync(req, resp);
+            ac.setTimeout(3000);
+            WriteListener wListener = new NonBlockingWriteListener(ac, bytesToWrite);
+            resp.getOutputStream().setWriteListener(wListener);
+        }
+
+        private static class NonBlockingWriteListener implements WriteListener {
+
+            private final AsyncContext ac;
+            private final ServletOutputStream sos;
+            private int bytesToWrite;
+
+            public NonBlockingWriteListener(AsyncContext ac, int bytesToWrite) throws IOException {
+                this.ac = ac;
+                this.sos = ac.getResponse().getOutputStream();
+                this.bytesToWrite = bytesToWrite;
+            }
+
+            @Override
+            public void onWritePossible() throws IOException {
+                do {
+                    // Write up to 1k a time
+                    int bytesThisTime = Math.min(bytesToWrite, 1024);
+                    sos.write(new byte[bytesThisTime]);
+                    bytesToWrite -= bytesThisTime;
+                } while (sos.isReady() && bytesToWrite > 0);
+
+                if (sos.isReady() && bytesToWrite == 0) {
+                    ac.complete();
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                throwable.printStackTrace();
+            }
+        }
+    }
+
+
+    private static class OptionsServlet extends HttpServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            resp.setContentType("text/plain");
+            resp.setCharacterEncoding("UTF-8");
+            PrintWriter pw = resp.getWriter();
+            pw.print("OK");
+        }
+    }
+
+
+    private static class OptionsServletSub extends OptionsServlet {
+
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+                throws ServletException, IOException {
+            doGet(req, resp);
         }
     }
 }

@@ -19,6 +19,8 @@ package javax.el;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,6 +32,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since EL 3.0
  */
 public class ImportHandler {
+
+    private static final boolean IS_SECURITY_ENABLED = (System.getSecurityManager() != null);
 
     private static final Map<String,Set<String>> standardPackages = new HashMap<>();
 
@@ -114,7 +118,7 @@ public class ImportHandler {
         servletHttpClassNames.add("HttpSessionEvent");
         servletHttpClassNames.add("HttpUtils");
         // Enums
-        servletHttpClassNames.add("MappingMatch");
+        servletHttpClassNames.add("ApplicationMappingMatch");
         standardPackages.put("javax.servlet.http", servletHttpClassNames);
 
         // JSP 2.3
@@ -137,7 +141,7 @@ public class ImportHandler {
         standardPackages.put("javax.servlet.jsp", servletJspClassNames);
 
         Set<String> javaLangClassNames = new HashSet<>();
-        // Taken from Java 11 EA18 Javadoc
+        // Taken from Java 14 EA27 Javadoc
         // Interfaces
         javaLangClassNames.add("Appendable");
         javaLangClassNames.add("AutoCloseable");
@@ -179,6 +183,7 @@ public class ImportHandler {
         javaLangClassNames.add("Process");
         javaLangClassNames.add("ProcessBuilder");
         javaLangClassNames.add("ProcessBuilder.Redirect");
+        javaLangClassNames.add("Record");
         javaLangClassNames.add("Runtime");
         javaLangClassNames.add("Runtime.Version");
         javaLangClassNames.add("RuntimePermission");
@@ -450,8 +455,18 @@ public class ImportHandler {
              * for the case where the class does exist is a lot less than the
              * overhead we save by not calling loadClass().
              */
-            if (cl.getResource(path) == null) {
-                return null;
+            if (IS_SECURITY_ENABLED) {
+                // Webapps don't have read permission for JAVA_HOME (and
+                // possibly other sources of classes). Only need to know if the
+                // class exists at this point. Class loading occurs with
+                // standard SecurityManager policy next.
+                if (!AccessController.doPrivileged(new PrivilegedResourceExists(cl, path)).booleanValue()) {
+                    return null;
+                }
+            } else {
+                if (cl.getResource(path) == null) {
+                    return null;
+                }
             }
         } catch (ClassCircularityError cce) {
             // May happen under a security manager. Ignore it and try loading
@@ -463,10 +478,12 @@ public class ImportHandler {
             return null;
         }
 
-        // Class must be public, non-abstract and not an interface
+        // Class must be public, non-abstract, not an interface and (for
+        // Java 9+) in an exported package
+        JreCompat jreCompat = JreCompat.getInstance();
         int modifiers = clazz.getModifiers();
         if (!Modifier.isPublic(modifiers) || Modifier.isAbstract(modifiers) ||
-                Modifier.isInterface(modifiers)) {
+                Modifier.isInterface(modifiers) || !jreCompat.isExported(clazz)) {
             if (throwException) {
                 throw new ELException(Util.message(
                         null, "importHandler.invalidClass", name));
@@ -484,5 +501,26 @@ public class ImportHandler {
      * ConcurrentHashMap.
      */
     private static class NotFound {
+    }
+
+
+    private static class PrivilegedResourceExists implements PrivilegedAction<Boolean> {
+
+        private final ClassLoader cl;
+        private final String name;
+
+        public PrivilegedResourceExists(ClassLoader cl, String name) {
+            this.cl = cl;
+            this.name = name;
+        }
+
+        @Override
+        public Boolean run() {
+            if (cl.getResource(name) == null) {
+                return Boolean.FALSE;
+            } else {
+                return Boolean.TRUE;
+            }
+        }
     }
 }

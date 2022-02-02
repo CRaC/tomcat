@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper;
 
 import java.io.File;
@@ -163,7 +162,7 @@ public final class EmbeddedServletOptions implements Options {
      * Java platform encoding to generate the JSP
      * page servlet.
      */
-    private String javaEncoding = "UTF8";
+    private String javaEncoding = "UTF-8";
 
     /**
      * Modification test interval.
@@ -652,12 +651,14 @@ public final class EmbeddedServletOptions implements Options {
         }
 
         String ieClassId = config.getInitParameter("ieClassId");
-        if (ieClassId != null)
+        if (ieClassId != null) {
             this.ieClassId = ieClassId;
+        }
 
         String classpath = config.getInitParameter("classpath");
-        if (classpath != null)
+        if (classpath != null) {
             this.classpath = classpath;
+        }
 
         /*
          * scratchdir
@@ -670,25 +671,18 @@ public final class EmbeddedServletOptions implements Options {
         if (dir != null) {
             scratchDir = new File(dir);
         } else {
-            // First try the Servlet 2.2 javax.servlet.context.tempdir property
             scratchDir = (File) context.getAttribute(ServletContext.TEMPDIR);
-            if (scratchDir == null) {
-                // Not running in a Servlet 2.2 container.
-                // Try to get the JDK 1.2 java.io.tmpdir property
-                dir = System.getProperty("java.io.tmpdir");
-                if (dir != null)
-                    scratchDir = new File(dir);
-            }
         }
-        if (this.scratchDir == null) {
+        if (scratchDir == null) {
             log.fatal(Localizer.getMessage("jsp.error.no.scratch.dir"));
             return;
         }
 
         if (!(scratchDir.exists() && scratchDir.canRead() &&
-                scratchDir.canWrite() && scratchDir.isDirectory()))
+                scratchDir.canWrite() && scratchDir.isDirectory())) {
             log.fatal(Localizer.getMessage("jsp.error.bad.scratch.dir",
                     scratchDir.getAbsolutePath()));
+        }
 
         this.compiler = config.getInitParameter("compiler");
 

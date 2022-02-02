@@ -107,14 +107,15 @@ public class ManifestResource {
             return true;
         }
         for (Extension ext : requiredExtensions) {
-            if (!ext.isFulfilled()) return false;
+            if (!ext.isFulfilled()) {
+                return false;
+            }
         }
         return true;
     }
 
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ManifestResource[");
         sb.append(resourceName);
 
@@ -129,8 +130,8 @@ public class ManifestResource {
             case WAR : sb.append(", resourceType=WAR"); break;
             case APPLICATION : sb.append(", resourceType=APPLICATION"); break;
         }
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -155,8 +156,9 @@ public class ManifestResource {
 
         Attributes attributes = manifest.getMainAttributes();
         String names = attributes.getValue("Extension-List");
-        if (names == null)
+        if (names == null) {
             return null;
+        }
 
         ArrayList<Extension> extensionList = new ArrayList<>();
         names += " ";
@@ -164,15 +166,17 @@ public class ManifestResource {
         while (true) {
 
             int space = names.indexOf(' ');
-            if (space < 0)
+            if (space < 0) {
                 break;
+            }
             String name = names.substring(0, space).trim();
             names = names.substring(space + 1);
 
             String value =
                 attributes.getValue(name + "-Extension-Name");
-            if (value == null)
+            if (value == null) {
                 continue;
+            }
             Extension extension = new Extension();
             extension.setExtensionName(value);
             extension.setImplementationURL
@@ -202,8 +206,9 @@ public class ManifestResource {
 
         Attributes attributes = manifest.getMainAttributes();
         String name = attributes.getValue("Extension-Name");
-        if (name == null)
+        if (name == null) {
             return null;
+        }
 
         ArrayList<Extension> extensionList = new ArrayList<>();
 

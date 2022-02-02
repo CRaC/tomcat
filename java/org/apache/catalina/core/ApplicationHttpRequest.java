@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.core;
 
 
@@ -24,6 +22,7 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Map;
@@ -35,6 +34,7 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletRequestWrapper;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpSession;
 
 import org.apache.catalina.Context;
@@ -42,12 +42,12 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.Manager;
 import org.apache.catalina.Session;
 import org.apache.catalina.connector.RequestFacade;
-import org.apache.catalina.servlet4preview.http.PushBuilder;
-import org.apache.catalina.servlet4preview.http.ServletMapping;
 import org.apache.catalina.util.ParameterMap;
+import org.apache.catalina.util.URLEncoder;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.http.Parameters;
+import org.apache.tomcat.util.res.StringManager;
 
 
 /**
@@ -65,12 +65,9 @@ import org.apache.tomcat.util.http.Parameters;
  * @author Craig R. McClanahan
  * @author Remy Maucherat
  */
-class ApplicationHttpRequest
-        extends org.apache.catalina.servlet4preview.http.HttpServletRequestWrapper {
+class ApplicationHttpRequest extends HttpServletRequestWrapper {
 
-
-    // ------------------------------------------------------- Static Variables
-
+    private static final StringManager sm = StringManager.getManager(ApplicationHttpRequest.class);
 
     /**
      * The set of attribute names that are special for request dispatchers.
@@ -194,7 +191,7 @@ class ApplicationHttpRequest
     /**
      * The mapping for this request.
      */
-    private ServletMapping mapping = null;
+    private ApplicationMappingImpl mapping = null;
 
 
     /**
@@ -263,7 +260,7 @@ class ApplicationHttpRequest
      */
     @Override
     public Enumeration<String> getAttributeNames() {
-        return (new AttributeNamesEnumerator());
+        return new AttributeNamesEnumerator();
     }
 
 
@@ -276,8 +273,9 @@ class ApplicationHttpRequest
     @Override
     public void removeAttribute(String name) {
 
-        if (!removeSpecial(name))
+        if (!removeSpecial(name)) {
             getRequest().removeAttribute(name);
+        }
 
     }
 
@@ -316,20 +314,31 @@ class ApplicationHttpRequest
     @Override
     public RequestDispatcher getRequestDispatcher(String path) {
 
-        if (context == null)
-            return (null);
+        if (context == null) {
+            return null;
+        }
+
+        if (path == null) {
+            return null;
+        }
+
+        int fragmentPos = path.indexOf('#');
+        if (fragmentPos > -1) {
+            context.getLogger().warn(sm.getString("applicationHttpRequest.fragmentInDispatchPath", path));
+            path = path.substring(0, fragmentPos);
+        }
 
         // If the path is already context-relative, just pass it through
-        if (path == null)
-            return (null);
-        else if (path.startsWith("/"))
-            return (context.getServletContext().getRequestDispatcher(path));
+        if (path.startsWith("/")) {
+            return context.getServletContext().getRequestDispatcher(path);
+        }
 
         // Convert a request-relative path to a context-relative one
         String servletPath =
             (String) getAttribute(RequestDispatcher.INCLUDE_SERVLET_PATH);
-        if (servletPath == null)
+        if (servletPath == null) {
             servletPath = getServletPath();
+        }
 
         // Add the path info, if there is any
         String pathInfo = getPathInfo();
@@ -343,13 +352,22 @@ class ApplicationHttpRequest
 
         int pos = requestPath.lastIndexOf('/');
         String relative = null;
-        if (pos >= 0) {
-            relative = requestPath.substring(0, pos + 1) + path;
+        if (context.getDispatchersUseEncodedPaths()) {
+            if (pos >= 0) {
+                relative = URLEncoder.DEFAULT.encode(
+                        requestPath.substring(0, pos + 1), StandardCharsets.UTF_8) + path;
+            } else {
+                relative = URLEncoder.DEFAULT.encode(requestPath, StandardCharsets.UTF_8) + path;
+            }
         } else {
-            relative = requestPath + path;
+            if (pos >= 0) {
+                relative = requestPath.substring(0, pos + 1) + path;
+            } else {
+                relative = requestPath + path;
+            }
         }
 
-        return (context.getServletContext().getRequestDispatcher(relative));
+        return context.getServletContext().getRequestDispatcher(relative);
 
     }
 
@@ -373,9 +391,7 @@ class ApplicationHttpRequest
      */
     @Override
     public String getContextPath() {
-
-        return (this.contextPath);
-
+        return this.contextPath;
     }
 
 
@@ -386,7 +402,6 @@ class ApplicationHttpRequest
      */
     @Override
     public String getParameter(String name) {
-
         parseParameters();
 
         String[] value = parameters.get(name);
@@ -394,7 +409,6 @@ class ApplicationHttpRequest
             return null;
         }
         return value[0];
-
     }
 
 
@@ -404,10 +418,8 @@ class ApplicationHttpRequest
      */
     @Override
     public Map<String, String[]> getParameterMap() {
-
         parseParameters();
-        return (parameters);
-
+        return parameters;
     }
 
 
@@ -417,7 +429,6 @@ class ApplicationHttpRequest
      */
     @Override
     public Enumeration<String> getParameterNames() {
-
         parseParameters();
         return Collections.enumeration(parameters.keySet());
     }
@@ -431,10 +442,8 @@ class ApplicationHttpRequest
      */
     @Override
     public String[] getParameterValues(String name) {
-
         parseParameters();
         return parameters.get(name);
-
     }
 
 
@@ -443,9 +452,7 @@ class ApplicationHttpRequest
      */
     @Override
     public String getPathInfo() {
-
-        return (this.pathInfo);
-
+        return this.pathInfo;
     }
 
 
@@ -469,9 +476,7 @@ class ApplicationHttpRequest
      */
     @Override
     public String getQueryString() {
-
-        return (this.queryString);
-
+        return this.queryString;
     }
 
 
@@ -481,9 +486,7 @@ class ApplicationHttpRequest
      */
     @Override
     public String getRequestURI() {
-
-        return (this.requestURI);
-
+        return this.requestURI;
     }
 
 
@@ -498,7 +501,9 @@ class ApplicationHttpRequest
         String scheme = getScheme();
         int port = getServerPort();
         if (port < 0)
+         {
             port = 80; // Work around java.net.URL bug
+        }
 
         url.append(scheme);
         url.append("://");
@@ -521,14 +526,11 @@ class ApplicationHttpRequest
      */
     @Override
     public String getServletPath() {
-
-        return (this.servletPath);
-
+        return this.servletPath;
     }
 
 
-    @Override
-    public ServletMapping getServletMapping() {
+    public ApplicationMappingImpl getHttpServletMapping() {
         return mapping;
     }
 
@@ -539,7 +541,7 @@ class ApplicationHttpRequest
      */
     @Override
     public HttpSession getSession() {
-        return (getSession(true));
+        return getSession(true);
     }
 
 
@@ -555,12 +557,13 @@ class ApplicationHttpRequest
         if (crossContext) {
 
             // There cannot be a session if no context has been assigned yet
-            if (context == null)
-                return (null);
+            if (context == null) {
+                return null;
+            }
 
             // Return the current session if it exists and is valid
             if (session != null && session.isValid()) {
-                return (session.getSession());
+                return session.getSession();
             }
 
             HttpSession other = super.getSession(false);
@@ -613,13 +616,16 @@ class ApplicationHttpRequest
         if (crossContext) {
 
             String requestedSessionId = getRequestedSessionId();
-            if (requestedSessionId == null)
+            if (requestedSessionId == null) {
                 return false;
-            if (context == null)
+            }
+            if (context == null) {
                 return false;
+            }
             Manager manager = context.getManager();
-            if (manager == null)
+            if (manager == null) {
                 return false;
+            }
             Session session = null;
             try {
                 session = manager.findSession(requestedSessionId);
@@ -638,8 +644,7 @@ class ApplicationHttpRequest
     }
 
 
-    @Override
-    public PushBuilder newPushBuilder() {
+    public ApplicationPushBuilder newPushBuilder() {
         ServletRequest current = getRequest();
         while (current instanceof ServletRequestWrapper) {
             current = ((ServletRequestWrapper) current).getRequest();
@@ -719,11 +724,7 @@ class ApplicationHttpRequest
         queryString = request.getQueryString();
         requestURI = request.getRequestURI();
         servletPath = request.getServletPath();
-        if (request instanceof org.apache.catalina.servlet4preview.http.HttpServletRequest) {
-            mapping = ((org.apache.catalina.servlet4preview.http.HttpServletRequest) request).getServletMapping();
-        } else {
-            mapping = (new ApplicationMapping(null)).getServletMapping();
-        }
+        mapping = ApplicationMapping.getHttpServletMapping(request);
     }
 
 
@@ -782,7 +783,7 @@ class ApplicationHttpRequest
     }
 
 
-    void setMapping(ServletMapping mapping) {
+    void setMapping(ApplicationMappingImpl mapping) {
         this.mapping = mapping;
     }
 
@@ -797,9 +798,10 @@ class ApplicationHttpRequest
      */
     protected boolean isSpecial(String name) {
 
-        for (int i = 0; i < specials.length; i++) {
-            if (specials[i].equals(name))
+        for (String special : specials) {
+            if (special.equals(name)) {
                 return true;
+            }
         }
         return false;
 
@@ -815,10 +817,10 @@ class ApplicationHttpRequest
     protected int getSpecial(String name) {
         for (int i = 0; i < specials.length; i++) {
             if (specials[i].equals(name)) {
-                return (i);
+                return i;
             }
         }
-        return (-1);
+        return -1;
     }
 
 
@@ -867,17 +869,13 @@ class ApplicationHttpRequest
         if (values1 == null) {
             // Skip - nothing to merge
         } else {
-            for (String value : values1) {
-                results.add(value);
-            }
+            results.addAll(Arrays.asList(values1));
         }
 
         if (values2 == null) {
             // Skip - nothing to merge
         } else {
-            for (String value : values2) {
-                results.add(value);
-            }
+            results.addAll(Arrays.asList(values2));
         }
 
         String values[] = new String[results.size()];
@@ -896,8 +894,9 @@ class ApplicationHttpRequest
      */
     private void mergeParameters() {
 
-        if ((queryParamString == null) || (queryParamString.length() < 1))
+        if ((queryParamString == null) || (queryParamString.length() < 1)) {
             return;
+        }
 
         // Parse the query string from the dispatch target
         Parameters paramParser = new Parameters();
@@ -978,7 +977,7 @@ class ApplicationHttpRequest
                 for (int i = pos + 1; i <= last; i++) {
                     if (getAttribute(specials[i]) != null) {
                         pos = i;
-                        return (specials[i]);
+                        return specials[i];
                     }
                 }
             }

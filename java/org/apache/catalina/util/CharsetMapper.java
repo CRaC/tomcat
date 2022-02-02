@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.util;
 
 
@@ -110,7 +109,7 @@ public class CharsetMapper {
                 charset = map.getProperty(locale.getLanguage());
             }
         }
-        return (charset);
+        return charset;
     }
 
 

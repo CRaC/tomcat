@@ -41,6 +41,7 @@ import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.naming.NamingException;
 import javax.security.auth.Subject;
@@ -76,13 +77,13 @@ import org.apache.catalina.TomcatPrincipal;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.core.ApplicationFilterChain;
 import org.apache.catalina.core.ApplicationMapping;
+import org.apache.catalina.core.ApplicationMappingImpl;
 import org.apache.catalina.core.ApplicationPart;
 import org.apache.catalina.core.ApplicationPushBuilder;
 import org.apache.catalina.core.ApplicationSessionCookieConfig;
 import org.apache.catalina.core.AsyncContextImpl;
 import org.apache.catalina.mapper.MappingData;
-import org.apache.catalina.servlet4preview.http.PushBuilder;
-import org.apache.catalina.servlet4preview.http.ServletMapping;
+import org.apache.catalina.session.ManagerBase;
 import org.apache.catalina.util.ParameterMap;
 import org.apache.catalina.util.TLSUtil;
 import org.apache.catalina.util.URLEncoder;
@@ -95,6 +96,7 @@ import org.apache.tomcat.InstanceManager;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
 import org.apache.tomcat.util.buf.MessageBytes;
 import org.apache.tomcat.util.buf.StringUtils;
 import org.apache.tomcat.util.buf.UDecoder;
@@ -105,13 +107,13 @@ import org.apache.tomcat.util.http.Parameters.FailReason;
 import org.apache.tomcat.util.http.ServerCookie;
 import org.apache.tomcat.util.http.ServerCookies;
 import org.apache.tomcat.util.http.fileupload.FileItem;
-import org.apache.tomcat.util.http.fileupload.FileUploadBase;
-import org.apache.tomcat.util.http.fileupload.FileUploadBase.InvalidContentTypeException;
-import org.apache.tomcat.util.http.fileupload.FileUploadException;
 import org.apache.tomcat.util.http.fileupload.disk.DiskFileItemFactory;
+import org.apache.tomcat.util.http.fileupload.impl.InvalidContentTypeException;
+import org.apache.tomcat.util.http.fileupload.impl.SizeException;
 import org.apache.tomcat.util.http.fileupload.servlet.ServletFileUpload;
 import org.apache.tomcat.util.http.fileupload.servlet.ServletRequestContext;
 import org.apache.tomcat.util.http.parser.AcceptLanguage;
+import org.apache.tomcat.util.http.parser.Upgrade;
 import org.apache.tomcat.util.net.SSLSupport;
 import org.apache.tomcat.util.res.StringManager;
 import org.ietf.jgss.GSSCredential;
@@ -123,12 +125,13 @@ import org.ietf.jgss.GSSException;
  * @author Remy Maucherat
  * @author Craig R. McClanahan
  */
-public class Request implements org.apache.catalina.servlet4preview.http.HttpServletRequest {
+public class Request implements HttpServletRequest {
+
+    private static final String HTTP_UPGRADE_HEADER_NAME = "upgrade";
 
     private static final Log log = LogFactory.getLog(Request.class);
 
     // ----------------------------------------------------------- Constructors
-
 
     public Request() {
         formats = new SimpleDateFormat[formatsTemplate.length];
@@ -162,13 +165,16 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      * @return the Coyote request object
      */
     public org.apache.coyote.Request getCoyoteRequest() {
-        return (this.coyoteRequest);
+        return this.coyoteRequest;
     }
 
 
     // ----------------------------------------------------- Variables
 
-
+    /**
+     * @deprecated Unused. This will be removed in Tomcat 10.
+     */
+    @Deprecated
     protected static final TimeZone GMT_ZONE = TimeZone.getTimeZone("GMT");
 
 
@@ -189,9 +195,13 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      *
      * Notice that because SimpleDateFormat is not thread-safe, we can't
      * declare formats[] as a static variable.
+     *
+     * @deprecated Unused. This will be removed in Tomcat 10
      */
+    @Deprecated
     protected final SimpleDateFormat formats[];
 
+    @Deprecated
     private static final SimpleDateFormat formatsTemplate[] = {
         new SimpleDateFormat(FastHttpDateFormat.RFC1123_DATE, Locale.US),
         new SimpleDateFormat("EEEEEE, dd-MMM-yy HH:mm:ss zzz", Locale.US),
@@ -270,7 +280,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
 
     /**
-     * Using writer flag.
+     * Using reader flag.
      */
     protected boolean usingReader = false;
 
@@ -392,6 +402,12 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
 
     /**
+     * Connection peer address.
+     */
+    protected String peerAddr = null;
+
+
+    /**
      * Remote host.
      */
     protected String remoteHost = null;
@@ -468,6 +484,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         localesParsed = false;
         secure = false;
         remoteAddr = null;
+        peerAddr = null;
         remoteHost = null;
         remotePort = -1;
         localPort = -1;
@@ -481,7 +498,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         recycleSessionInfo();
         recycleCookieInfo(false);
 
-        if (Globals.IS_SECURITY_ENABLED || Connector.RECYCLE_FACADES) {
+        if (getDiscardFacades()) {
             parameterMap = new ParameterMap<>();
         } else {
             parameterMap.setLocked(false);
@@ -492,7 +509,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         applicationMapping.recycle();
 
         applicationRequest = null;
-        if (Globals.IS_SECURITY_ENABLED || Connector.RECYCLE_FACADES) {
+        if (getDiscardFacades()) {
             if (facade != null) {
                 facade.clear();
                 facade = null;
@@ -578,6 +595,17 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     public Context getContext() {
         return mappingData.context;
     }
+
+
+    /**
+     * Get the recycling strategy of the facade objects.
+     * @return the value of the flag as set on the connector, or
+     *   <code>true</code> if no connector is associated with this request
+     */
+    public boolean getDiscardFacades() {
+        return (connector == null) ? true : connector.getDiscardFacades();
+    }
+
 
     /**
      * @param context The newly associated Context
@@ -740,6 +768,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         return mappingData.wrapper;
     }
 
+
     /**
      * @param wrapper The newly associated Wrapper
      * @deprecated Use setters on {@link #getMappingData() MappingData} object.
@@ -755,7 +784,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
     // ------------------------------------------------- Request Public Methods
 
-
     /**
      * Create and return a ServletInputStream to read the content
      * associated with this Request.
@@ -764,7 +792,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      * @exception IOException if an input/output error occurs
      */
     public ServletInputStream createInputStream()
-        throws IOException {
+            throws IOException {
         if (inputStream == null) {
             inputStream = new CoyoteInputStream(inputBuffer);
         }
@@ -872,8 +900,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
     // ------------------------------------------------- ServletRequest Methods
 
-
-
     /**
      * @return the specified request attribute if it exists; otherwise, return
      * <code>null</code>.
@@ -891,14 +917,14 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         Object attr = attributes.get(name);
 
         if (attr != null) {
-            return(attr);
+            return attr;
         }
 
         attr = coyoteRequest.getAttribute(name);
         if (attr != null) {
             return attr;
         }
-        if (TLSUtil.isTLSRequestAttribute(name)) {
+        if (!sslAttributesParsed && TLSUtil.isTLSRequestAttribute(name)) {
             coyoteRequest.action(ActionCode.REQ_SSL_ATTRIBUTE, coyoteRequest);
             attr = coyoteRequest.getAttribute(Globals.CERTIFICATES_ATTR);
             if (attr != null) {
@@ -923,6 +949,14 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             attr = coyoteRequest.getAttribute(SSLSupport.PROTOCOL_VERSION_KEY);
             if (attr != null) {
                 attributes.put(SSLSupport.PROTOCOL_VERSION_KEY, attr);
+            }
+            attr = coyoteRequest.getAttribute(SSLSupport.REQUESTED_PROTOCOL_VERSIONS_KEY);
+            if (attr != null) {
+                attributes.put(SSLSupport.REQUESTED_PROTOCOL_VERSIONS_KEY, attr);
+            }
+            attr = coyoteRequest.getAttribute(SSLSupport.REQUESTED_CIPHERS_KEY);
+            if (attr != null) {
+                attributes.put(SSLSupport.REQUESTED_CIPHERS_KEY, attr);
             }
             attr = attributes.get(name);
             sslAttributesParsed = true;
@@ -972,8 +1006,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
         // Take a copy to prevent ConcurrentModificationExceptions if used to
         // remove attributes
-        Set<String> names = new HashSet<>();
-        names.addAll(attributes.keySet());
+        Set<String> names = new HashSet<>(attributes.keySet());
         return Collections.enumeration(names);
     }
 
@@ -1065,8 +1098,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     public ServletInputStream getInputStream() throws IOException {
 
         if (usingReader) {
-            throw new IllegalStateException
-                (sm.getString("coyoteRequest.getInputStream.ise"));
+            throw new IllegalStateException(sm.getString("coyoteRequest.getInputStream.ise"));
         }
 
         usingInputStream = true;
@@ -1228,8 +1260,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     public BufferedReader getReader() throws IOException {
 
         if (usingInputStream) {
-            throw new IllegalStateException
-                (sm.getString("coyoteRequest.getReader.ise"));
+            throw new IllegalStateException(sm.getString("coyoteRequest.getReader.ise"));
         }
 
         usingReader = true;
@@ -1238,7 +1269,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             reader = new CoyoteReader(inputBuffer);
         }
         return reader;
-
     }
 
 
@@ -1264,7 +1294,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
 
         try {
-            return (servletContext.getRealPath(path));
+            return servletContext.getRealPath(path);
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -1277,11 +1307,22 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     public String getRemoteAddr() {
         if (remoteAddr == null) {
-            coyoteRequest.action
-                (ActionCode.REQ_HOST_ADDR_ATTRIBUTE, coyoteRequest);
+            coyoteRequest.action(ActionCode.REQ_HOST_ADDR_ATTRIBUTE, coyoteRequest);
             remoteAddr = coyoteRequest.remoteAddr().toString();
         }
         return remoteAddr;
+    }
+
+
+    /**
+     * @return the connection peer IP address making this Request.
+     */
+    public String getPeerAddr() {
+        if (peerAddr == null) {
+            coyoteRequest.action(ActionCode.REQ_PEER_ADDR_ATTRIBUTE, coyoteRequest);
+            peerAddr = coyoteRequest.peerAddr().toString();
+        }
+        return peerAddr;
     }
 
 
@@ -1294,8 +1335,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             if (!connector.getEnableLookups()) {
                 remoteHost = getRemoteAddr();
             } else {
-                coyoteRequest.action
-                    (ActionCode.REQ_HOST_ATTRIBUTE, coyoteRequest);
+                coyoteRequest.action(ActionCode.REQ_HOST_ATTRIBUTE, coyoteRequest);
                 remoteHost = coyoteRequest.remoteHost().toString();
             }
         }
@@ -1309,8 +1349,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     public int getRemotePort(){
         if (remotePort == -1) {
-            coyoteRequest.action
-                (ActionCode.REQ_REMOTEPORT_ATTRIBUTE, coyoteRequest);
+            coyoteRequest.action(ActionCode.REQ_REMOTEPORT_ATTRIBUTE, coyoteRequest);
             remotePort = coyoteRequest.getRemotePort();
         }
         return remotePort;
@@ -1323,8 +1362,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     public String getLocalName(){
         if (localName == null) {
-            coyoteRequest.action
-                (ActionCode.REQ_LOCAL_NAME_ATTRIBUTE, coyoteRequest);
+            coyoteRequest.action(ActionCode.REQ_LOCAL_NAME_ATTRIBUTE, coyoteRequest);
             localName = coyoteRequest.localName().toString();
         }
         return localName;
@@ -1337,8 +1375,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     public String getLocalAddr(){
         if (localAddr == null) {
-            coyoteRequest.action
-                (ActionCode.REQ_LOCAL_ADDR_ATTRIBUTE, coyoteRequest);
+            coyoteRequest.action(ActionCode.REQ_LOCAL_ADDR_ATTRIBUTE, coyoteRequest);
             localAddr = coyoteRequest.localAddr().toString();
         }
         return localAddr;
@@ -1352,8 +1389,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     public int getLocalPort(){
         if (localPort == -1){
-            coyoteRequest.action
-                (ActionCode.REQ_LOCALPORT_ATTRIBUTE, coyoteRequest);
+            coyoteRequest.action(ActionCode.REQ_LOCALPORT_ATTRIBUTE, coyoteRequest);
             localPort = coyoteRequest.getLocalPort();
         }
         return localPort;
@@ -1373,11 +1409,19 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             return null;
         }
 
-        // If the path is already context-relative, just pass it through
         if (path == null) {
             return null;
-        } else if (path.startsWith("/")) {
-            return (context.getServletContext().getRequestDispatcher(path));
+        }
+
+        int fragmentPos = path.indexOf('#');
+        if (fragmentPos > -1) {
+            log.warn(sm.getString("request.fragmentInDispatchPath", path));
+            path = path.substring(0, fragmentPos);
+        }
+
+        // If the path is already context-relative, just pass it through
+        if (path.startsWith("/")) {
+            return context.getServletContext().getRequestDispatcher(path);
         }
 
         /*
@@ -1493,8 +1537,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
             // Notify interested application event listeners
             notifyAttributeRemoved(name, value);
-        } else {
-            return;
         }
     }
 
@@ -1510,8 +1552,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
         // Name cannot be null
         if (name == null) {
-            throw new IllegalArgumentException
-                (sm.getString("coyoteRequest.setAttribute.namenull"));
+            throw new IllegalArgumentException(sm.getString("coyoteRequest.setAttribute.namenull"));
         }
 
         // Null value is the same as removeAttribute()
@@ -1587,12 +1628,11 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                     context.getServletContext(), getRequest(), name, value);
         }
 
-        for (int i = 0; i < listeners.length; i++) {
-            if (!(listeners[i] instanceof ServletRequestAttributeListener)) {
+        for (Object o : listeners) {
+            if (!(o instanceof ServletRequestAttributeListener)) {
                 continue;
             }
-            ServletRequestAttributeListener listener =
-                (ServletRequestAttributeListener) listeners[i];
+            ServletRequestAttributeListener listener = (ServletRequestAttributeListener) o;
             try {
                 if (replaced) {
                     listener.attributeReplaced(event);
@@ -1622,14 +1662,13 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             return;
         }
         ServletRequestAttributeEvent event =
-          new ServletRequestAttributeEvent(context.getServletContext(),
-                                           getRequest(), name, value);
-        for (int i = 0; i < listeners.length; i++) {
-            if (!(listeners[i] instanceof ServletRequestAttributeListener)) {
+                new ServletRequestAttributeEvent(context.getServletContext(),
+                        getRequest(), name, value);
+        for (Object o : listeners) {
+            if (!(o instanceof ServletRequestAttributeListener)) {
                 continue;
             }
-            ServletRequestAttributeListener listener =
-                (ServletRequestAttributeListener) listeners[i];
+            ServletRequestAttributeListener listener = (ServletRequestAttributeListener) o;
             try {
                 listener.attributeRemoved(event);
             } catch (Throwable t) {
@@ -1797,7 +1836,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
     // ---------------------------------------------------- HttpRequest Methods
 
-
     /**
      * Add a Cookie to the set of Cookies associated with this Request.
      *
@@ -1815,8 +1853,8 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
 
         Cookie[] newCookies = new Cookie[size + 1];
-        for (int i = 0; i < size; i++) {
-            newCookies[i] = cookies[i];
+        if (cookies != null) {
+            System.arraycopy(cookies, 0, newCookies, 0, size);
         }
         newCookies[size] = cookie;
 
@@ -1992,21 +2030,12 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     }
 
 
-    // --------------------------------------------- HttpServletRequest Methods
-
-    /**
-     * Pulled forward from Servlet 4.0. The method signature may be modified,
-     * removed or replaced at any time until Servlet 4.0 becomes final.
-     *
-     * @return A builder to use to construct the push request
-     */
-    @Override
-    public PushBuilder newPushBuilder() {
+    public ApplicationPushBuilder newPushBuilder() {
         return newPushBuilder(this);
     }
 
 
-    public PushBuilder newPushBuilder(HttpServletRequest request) {
+    public ApplicationPushBuilder newPushBuilder(HttpServletRequest request) {
         AtomicBoolean result = new AtomicBoolean();
         coyoteRequest.action(ActionCode.IS_PUSH_SUPPORTED, result);
         if (result.get()) {
@@ -2016,6 +2045,8 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
     }
 
+
+    // --------------------------------------------- HttpServletRequest Methods
 
     /**
      * {@inheritDoc}
@@ -2042,8 +2073,8 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                 SecurityException e) {
             throw new ServletException(e);
         }
-        UpgradeToken upgradeToken = new UpgradeToken(handler,
-                getContext(), instanceManager);
+        UpgradeToken upgradeToken = new UpgradeToken(handler, getContext(), instanceManager,
+                getUpgradeProtocolName(httpUpgradeHandlerClass));
 
         coyoteRequest.action(ActionCode.UPGRADE, upgradeToken);
 
@@ -2054,6 +2085,29 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         return handler;
     }
 
+
+    private String getUpgradeProtocolName(Class<? extends HttpUpgradeHandler> httpUpgradeHandlerClass) {
+        // Ideal - the caller has already explicitly set the selected protocol
+        // on the response
+        String result = response.getHeader(HTTP_UPGRADE_HEADER_NAME);
+
+        if (result == null) {
+            // If the request's upgrade header contains a single protocol that
+            // is the protocol that must have been selected
+            List<Upgrade> upgradeProtocols = Upgrade.parse(getHeaders(HTTP_UPGRADE_HEADER_NAME));
+            if (upgradeProtocols != null && upgradeProtocols.size() == 1) {
+                result = upgradeProtocols.get(0).toString();
+            }
+        }
+
+        if (result == null) {
+            // Ugly but use the class name - it is better than nothing
+            result = httpUpgradeHandlerClass.getName();
+        }
+        return result;
+    }
+
+
     /**
      * Return the authentication type used for this Request.
      */
@@ -2061,6 +2115,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     public String getAuthType() {
         return authType;
     }
+
 
     /**
      * Return the portion of the request URI used to select the Context
@@ -2171,8 +2226,9 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         while (pos < len) {
             if (uri[pos] == '/') {
                 return pos;
-            } else if (UDecoder.ALLOW_ENCODED_SLASH && uri[pos] == '%' && pos + 2 < len &&
-                    uri[pos+1] == '2' && (uri[pos + 2] == 'f' || uri[pos + 2] == 'F')) {
+            } else if (connector.getEncodedSolidusHandlingInternal() == EncodedSolidusHandling.DECODE &&
+                    uri[pos] == '%' && pos + 2 < len && uri[pos+1] == '2' &&
+                    (uri[pos + 2] == 'f' || uri[pos + 2] == 'F')) {
                 return pos;
             }
             pos++;
@@ -2225,11 +2281,11 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
         String value = getHeader(name);
         if (value == null) {
-            return (-1L);
+            return -1L;
         }
 
         // Attempt to convert the date header in a variety of formats
-        long result = FastHttpDateFormat.parseDate(value, formats);
+        long result = FastHttpDateFormat.parseDate(value);
         if (result != (-1L)) {
             return result;
         }
@@ -2288,16 +2344,15 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
         String value = getHeader(name);
         if (value == null) {
-            return (-1);
+            return -1;
         }
 
         return Integer.parseInt(value);
     }
 
 
-    @Override
-    public ServletMapping getServletMapping() {
-        return applicationMapping.getServletMapping();
+    public ApplicationMappingImpl getHttpServletMapping() {
+        return applicationMapping.getHttpServletMapping();
     }
 
 
@@ -2391,22 +2446,6 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     }
 
 
-    /**
-     * Reconstructs the URL the client used to make the request.
-     * The returned URL contains a protocol, server name, port
-     * number, and server path, but it does not include query
-     * string parameters.
-     * <p>
-     * Because this method returns a <code>StringBuffer</code>,
-     * not a <code>String</code>, you can modify the URL easily,
-     * for example, to append query parameters.
-     * <p>
-     * This method is useful for creating redirect messages and
-     * for reporting errors.
-     *
-     * @return A <code>StringBuffer</code> object containing the
-     *  reconstructed URL
-     */
     @Override
     public StringBuffer getRequestURL() {
 
@@ -2438,7 +2477,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      */
     @Override
     public String getServletPath() {
-        return (mappingData.wrapperPath.toString());
+        return mappingData.wrapperPath.toString();
     }
 
 
@@ -2514,7 +2553,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
     @Override
     @Deprecated
     public boolean isRequestedSessionIdFromUrl() {
-        return (isRequestedSessionIdFromURL());
+        return isRequestedSessionIdFromURL();
     }
 
 
@@ -2608,7 +2647,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
 
         // Check for a role defined directly as a <security-role>
-        return (realm.hasRole(getWrapper(), userPrincipal, role));
+        return realm.hasRole(getWrapper(), userPrincipal, role);
     }
 
 
@@ -2631,12 +2670,24 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             if (gssCredential != null) {
                 int left = -1;
                 try {
+                    // Concurrent calls to this method from an expired session
+                    // can trigger an ISE. If one thread calls logout() below
+                    // before another thread calls getRemainingLifetime() then
+                    // then since logout() eventually calls
+                    // GSSCredential.dispose(), the subsequent call to
+                    // GSSCredential.getRemainingLifetime() will throw an ISE.
+                    // Avoiding the ISE would require locking in this method to
+                    // protect against concurrent access to the GSSCredential.
+                    // That would have a small performance impact. The ISE is
+                    // rare so it is caught and handled rather than avoided.
                     left = gssCredential.getRemainingLifetime();
-                } catch (GSSException e) {
+                } catch (GSSException | IllegalStateException e) {
                     log.warn(sm.getString("coyoteRequest.gssLifetimeFail",
                             userPrincipal.getName()), e);
                 }
-                if (left == 0) {
+                // zero is expired. Exception above will mean left == -1
+                // Treat both as expired.
+                if (left <= 0) {
                     // GSS credential has expired. Need to re-authenticate.
                     try {
                         logout();
@@ -2679,28 +2730,21 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
 
         Context context = getContext();
-        if (context != null
-                && !context.getServletContext()
+        if (context != null &&
+                !context.getServletContext()
                         .getEffectiveSessionTrackingModes()
                         .contains(SessionTrackingMode.COOKIE)) {
             return;
         }
 
         if (response != null) {
-            Cookie newCookie =
-                ApplicationSessionCookieConfig.createSessionCookie(context,
-                        newSessionId, isSecure());
+            Cookie newCookie = ApplicationSessionCookieConfig.createSessionCookie(context,
+                    newSessionId, isSecure());
             response.addSessionCookieInternal(newCookie);
         }
     }
 
-    /**
-     * Changes the session ID of the session associated with this request.
-     *
-     * @return the old session ID before it was changed
-     * @see javax.servlet.http.HttpSessionIdListener
-     * @since Servlet 3.1
-     */
+
     @Override
     public String changeSessionId() {
 
@@ -2711,12 +2755,35 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         }
 
         Manager manager = this.getContext().getManager();
-        manager.changeSessionId(session);
 
-        String newSessionId = session.getId();
+        String newSessionId = rotateSessionId(manager, session);
         this.changeSessionId(newSessionId);
 
         return newSessionId;
+    }
+
+    private String rotateSessionId(Manager manager, Session session) {
+        if (manager instanceof ManagerBase) {
+            return ((ManagerBase) manager).rotateSessionId(session);
+        } else {
+            String newSessionId = null;
+            // Assume there new Id is a duplicate until we prove it isn't. The
+            // chances of a duplicate are extremely low but the current ManagerBase
+            // code protects against duplicates so this method does too.
+            boolean duplicate = true;
+            do {
+                newSessionId = manager.getSessionIdGenerator().generateSessionId();
+                try {
+                    if (manager.findSession(newSessionId) == null) {
+                        duplicate = false;
+                    }
+                } catch (IOException ioe) {
+                    // Swallow. An IOE means the ID was known so continue looping
+                }
+            } while (duplicate);
+            manager.changeSessionId(session, newSessionId);
+            return newSessionId;
+        }
     }
 
     /**
@@ -2764,7 +2831,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      */
     @Override
     public boolean authenticate(HttpServletResponse response)
-    throws IOException, ServletException {
+            throws IOException, ServletException {
         if (response.isCommitted()) {
             throw new IllegalStateException(
                     sm.getString("coyoteRequest.authenticate.ise"));
@@ -2778,7 +2845,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      */
     @Override
     public void login(String username, String password)
-    throws ServletException {
+            throws ServletException {
         if (getAuthType() != null || getRemoteUser() != null ||
                 getUserPrincipal() != null) {
             throw new ServletException(
@@ -2830,10 +2897,8 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
 
         if (mce == null) {
             if(context.getAllowCasualMultipartParsing()) {
-                mce = new MultipartConfigElement(null,
-                                                 connector.getMaxPostSize(),
-                                                 connector.getMaxPostSize(),
-                                                 connector.getMaxPostSize());
+                mce = new MultipartConfigElement(null, connector.getMaxPostSize(),
+                        connector.getMaxPostSize(), connector.getMaxPostSize());
             } else {
                 if (explicit) {
                     partsParseException = new IllegalStateException(
@@ -2861,9 +2926,8 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                 location = new File(locationStr);
                 if (!location.isAbsolute()) {
                     location = new File(
-                            (File) context.getServletContext().getAttribute(
-                                        ServletContext.TEMPDIR),
-                                        locationStr).getAbsoluteFile();
+                            (File) context.getServletContext().getAttribute(ServletContext.TEMPDIR),
+                            locationStr).getAbsoluteFile();
                 }
             }
 
@@ -2913,22 +2977,14 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                     parts.add(part);
                     if (part.getSubmittedFileName() == null) {
                         String name = part.getName();
-                        String value = null;
-                        try {
-                            value = part.getString(charset.name());
-                        } catch (UnsupportedEncodingException uee) {
-                            // Not possible
-                        }
                         if (maxPostSize >= 0) {
                             // Have to calculate equivalent size. Not completely
                             // accurate but close enough.
                             postSize += name.getBytes(charset).length;
-                            if (value != null) {
-                                // Equals sign
-                                postSize++;
-                                // Value length
-                                postSize += part.getSize();
-                            }
+                            // Equals sign
+                            postSize++;
+                            // Value length
+                            postSize += part.getSize();
                             // Value separator
                             postSize++;
                             if (postSize > maxPostSize) {
@@ -2936,6 +2992,12 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                                 throw new IllegalStateException(sm.getString(
                                         "coyoteRequest.maxPostSizeExceeded"));
                             }
+                        }
+                        String value = null;
+                        try {
+                            value = part.getString(charset.name());
+                        } catch (UnsupportedEncodingException uee) {
+                            // Not possible
                         }
                         parameters.addParameter(name, value);
                     }
@@ -2945,11 +3007,11 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             } catch (InvalidContentTypeException e) {
                 parameters.setParseFailedReason(FailReason.INVALID_CONTENT_TYPE);
                 partsParseException = new ServletException(e);
-            } catch (FileUploadBase.SizeException e) {
+            } catch (SizeException e) {
                 parameters.setParseFailedReason(FailReason.POST_TOO_LARGE);
                 checkSwallowInput();
                 partsParseException = new IllegalStateException(e);
-            } catch (FileUploadException e) {
+            } catch (IOException e) {
                 parameters.setParseFailedReason(FailReason.IO_ERROR);
                 partsParseException = new IOException(e);
             } catch (IllegalStateException e) {
@@ -2991,7 +3053,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         // There cannot be a session if no context has been assigned yet
         Context context = getContext();
         if (context == null) {
-            return (null);
+            return null;
         }
 
         // Return the current session if it exists and is valid
@@ -2999,18 +3061,23 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             session = null;
         }
         if (session != null) {
-            return (session);
+            return session;
         }
 
         // Return the requested session if it exists and is valid
         Manager manager = context.getManager();
         if (manager == null) {
-            return (null);      // Sessions are not supported
+            return null;      // Sessions are not supported
         }
         if (requestedSessionId != null) {
             try {
                 session = manager.findSession(requestedSessionId);
             } catch (IOException e) {
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("request.session.failed", requestedSessionId, e.getMessage()), e);
+                } else {
+                    log.info(sm.getString("request.session.failed", requestedSessionId, e.getMessage()));
+                }
                 session = null;
             }
             if ((session != null) && !session.isValid()) {
@@ -3018,21 +3085,18 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             }
             if (session != null) {
                 session.access();
-                return (session);
+                return session;
             }
         }
 
         // Create a new session if requested and the response is not committed
         if (!create) {
-            return (null);
+            return null;
         }
-        if (response != null
-                && context.getServletContext()
-                        .getEffectiveSessionTrackingModes()
-                        .contains(SessionTrackingMode.COOKIE)
-                && response.getResponse().isCommitted()) {
-            throw new IllegalStateException(
-                    sm.getString("coyoteRequest.sessionCreateCommitted"));
+        boolean trackModesIncludesCookie =
+                context.getServletContext().getEffectiveSessionTrackingModes().contains(SessionTrackingMode.COOKIE);
+        if (trackModesIncludesCookie && response.getResponse().isCommitted()) {
+            throw new IllegalStateException(sm.getString("coyoteRequest.sessionCreateCommitted"));
         }
 
         // Re-use session IDs provided by the client in very limited
@@ -3079,13 +3143,9 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         session = manager.createSession(sessionId);
 
         // Creating a new session cookie based on that session
-        if (session != null
-                && context.getServletContext()
-                        .getEffectiveSessionTrackingModes()
-                        .contains(SessionTrackingMode.COOKIE)) {
-            Cookie cookie =
-                ApplicationSessionCookieConfig.createSessionCookie(
-                        context, session.getIdInternal(), isSecure());
+        if (session != null && trackModesIncludesCookie) {
+            Cookie cookie = ApplicationSessionCookieConfig.createSessionCookie(
+                    context, session.getIdInternal(), isSecure());
 
             response.addSessionCookieInternal(cookie);
         }
@@ -3111,8 +3171,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
             if (c!='\\') {
                 buf.append(c);
             } else {
-                if (++i >= s.length())
-                 {
+                if (++i >= s.length()) {
                     throw new IllegalArgumentException();//invalid escape, hence invalid cookie
                 }
                 c = s.charAt(i);
@@ -3170,9 +3229,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         for (int i = 0; i < count; i++) {
             ServerCookie scookie = serverCookies.getCookie(i);
             try {
-                /*
-                we must unescape the '\\' escape character
-                */
+                // We must unescape the '\\' escape character
                 Cookie cookie = new Cookie(scookie.getName().toString(),null);
                 int version = scookie.getVersion();
                 cookie.setVersion(version);
@@ -3180,8 +3237,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                 cookie.setValue(unescape(scookie.getValue().toString()));
                 cookie.setPath(unescape(scookie.getPath().toString()));
                 String domain = scookie.getDomain().toString();
-                if (domain!=null)
-                 {
+                if (domain!=null) {
                     cookie.setDomain(unescape(domain));//avoid NPE
                 }
                 String comment = scookie.getComment().toString();
@@ -3291,8 +3347,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                     Context context = getContext();
                     if (context != null && context.getLogger().isDebugEnabled()) {
                         context.getLogger().debug(
-                                sm.getString("coyoteRequest.parseParameters"),
-                                e);
+                                sm.getString("coyoteRequest.parseParameters"), e);
                     }
                     parameters.setParseFailedReason(FailReason.CLIENT_DISCONNECT);
                     return;
@@ -3319,8 +3374,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                     Context context = getContext();
                     if (context != null && context.getLogger().isDebugEnabled()) {
                         context.getLogger().debug(
-                                sm.getString("coyoteRequest.parseParameters"),
-                                e);
+                                sm.getString("coyoteRequest.parseParameters"), e);
                     }
                     return;
                 }
@@ -3347,7 +3401,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
      * @throws IOException if an IO exception occurred
      */
     protected int readPostBody(byte[] body, int len)
-        throws IOException {
+            throws IOException {
 
         int offset = 0;
         do {
@@ -3472,8 +3526,7 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
         // void remove(Request request, String name);
     }
 
-    private static final Map<String, SpecialAttributeAdapter> specialAttributes
-        = new HashMap<>();
+    private static final Map<String, SpecialAttributeAdapter> specialAttributes = new HashMap<>();
 
     static {
         specialAttributes.put(Globals.DISPATCHER_TYPE_ATTR,
@@ -3568,6 +3621,32 @@ public class Request implements org.apache.catalina.servlet4preview.http.HttpSer
                         return Boolean.valueOf(
                                 request.getConnector().getProtocolHandler(
                                         ).isSendfileSupported() && request.getCoyoteRequest().getSendfile());
+                    }
+                    @Override
+                    public void set(Request request, String name, Object value) {
+                        // NO-OP
+                    }
+                });
+        specialAttributes.put(Globals.CONNECTION_ID,
+                new SpecialAttributeAdapter() {
+                    @Override
+                    public Object get(Request request, String name) {
+                        AtomicReference<Object> result = new AtomicReference<>();
+                        request.getCoyoteRequest().action(ActionCode.CONNECTION_ID, result);
+                        return result.get();
+                    }
+                    @Override
+                    public void set(Request request, String name, Object value) {
+                        // NO-OP
+                    }
+                });
+        specialAttributes.put(Globals.STREAM_ID,
+                new SpecialAttributeAdapter() {
+                    @Override
+                    public Object get(Request request, String name) {
+                        AtomicReference<Object> result = new AtomicReference<>();
+                        request.getCoyoteRequest().action(ActionCode.STREAM_ID, result);
+                        return result.get();
                     }
                     @Override
                     public void set(Request request, String name, Object value) {

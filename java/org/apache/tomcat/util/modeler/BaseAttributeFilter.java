@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.modeler;
 
 
@@ -50,8 +48,9 @@ public class BaseAttributeFilter implements NotificationFilter {
     public BaseAttributeFilter(String name) {
 
         super();
-        if (name != null)
+        if (name != null) {
             addAttribute(name);
+        }
 
     }
 
@@ -105,7 +104,7 @@ public class BaseAttributeFilter implements NotificationFilter {
     public String[] getNames() {
 
         synchronized (names) {
-            return names.toArray(new String[names.size()]);
+            return names.toArray(new String[0]);
         }
 
     }
@@ -124,19 +123,23 @@ public class BaseAttributeFilter implements NotificationFilter {
     @Override
     public boolean isNotificationEnabled(Notification notification) {
 
-        if (notification == null)
+        if (notification == null) {
             return false;
-        if (!(notification instanceof AttributeChangeNotification))
+        }
+        if (!(notification instanceof AttributeChangeNotification)) {
             return false;
+        }
         AttributeChangeNotification acn =
             (AttributeChangeNotification) notification;
-        if (!AttributeChangeNotification.ATTRIBUTE_CHANGE.equals(acn.getType()))
+        if (!AttributeChangeNotification.ATTRIBUTE_CHANGE.equals(acn.getType())) {
             return false;
+        }
         synchronized (names) {
-            if (names.size() < 1)
+            if (names.size() < 1) {
                 return true;
-            else
-                return (names.contains(acn.getAttributeName()));
+            } else {
+                return names.contains(acn.getAttributeName());
+            }
         }
 
     }

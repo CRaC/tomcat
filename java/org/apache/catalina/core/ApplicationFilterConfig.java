@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.core;
 
 
@@ -59,10 +57,9 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
     private static final long serialVersionUID = 1L;
 
-    static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    static final StringManager sm = StringManager.getManager(ApplicationFilterConfig.class);
 
-    private final Log log = LogFactory.getLog(ApplicationFilterConfig.class); // must not be static
+    private transient Log log = LogFactory.getLog(ApplicationFilterConfig.class); // must not be static
 
     /**
      * Empty String collection to serve as the basis for empty enumerations.
@@ -152,7 +149,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      */
     @Override
     public String getFilterName() {
-        return (filterDef.getFilterName());
+        return filterDef.getFilterName();
     }
 
     /**
@@ -174,7 +171,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
         Map<String,String> map = filterDef.getParameterMap();
         if (map == null) {
-            return (null);
+            return null;
         }
 
         return map.get(name);
@@ -214,15 +211,13 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ApplicationFilterConfig[");
         sb.append("name=");
         sb.append(filterDef.getFilterName());
         sb.append(", filterClass=");
         sb.append(filterDef.getFilterClass());
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
     // --------------------------------------------------------- Public Methods
@@ -256,8 +251,9 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
             IllegalArgumentException, NoSuchMethodException, SecurityException {
 
         // Return the existing filter instance, if any
-        if (this.filter != null)
-            return (this.filter);
+        if (this.filter != null) {
+            return this.filter;
+        }
 
         // Identify the class loader we will be using
         String filterClass = filterDef.getFilterClass();
@@ -265,7 +261,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
 
         initFilter();
 
-        return (this.filter);
+        return this.filter;
 
     }
 
@@ -293,9 +289,7 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
      * Return the filter definition we are configured for.
      */
     FilterDef getFilterDef() {
-
-        return (this.filterDef);
-
+        return this.filterDef;
     }
 
     /**
@@ -401,9 +395,10 @@ public final class ApplicationFilterConfig implements FilterConfig, Serializable
         if (oname != null) {
             try {
                 Registry.getRegistry(null, null).unregisterComponent(oname);
-                if (log.isDebugEnabled())
+                if (log.isDebugEnabled()) {
                     log.debug(sm.getString("applicationFilterConfig.jmxUnregister",
                             getFilterClass(), getFilterName()));
+                }
             } catch(Exception ex) {
                 log.warn(sm.getString("applicationFilterConfig.jmxUnregisterFail",
                         getFilterClass(), getFilterName()), ex);

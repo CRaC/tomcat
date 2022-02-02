@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.util.ArrayList;
 import java.util.Hashtable;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -43,13 +42,11 @@ import org.apache.tomcat.dbcp.dbcp2.ListException;
  */
 abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
 
-    private static final Map<String, InstanceKeyDataSource> instanceMap = new ConcurrentHashMap<>();
+    private static final Map<String, InstanceKeyDataSource> INSTANCE_MAP = new ConcurrentHashMap<>();
 
     static synchronized String registerNewInstance(final InstanceKeyDataSource ds) {
         int max = 0;
-        final Iterator<String> iterator = instanceMap.keySet().iterator();
-        while (iterator.hasNext()) {
-            final String s = iterator.next();
+        for (final String s : INSTANCE_MAP.keySet()) {
             if (s != null) {
                 try {
                     max = Math.max(max, Integer.parseInt(s));
@@ -61,13 +58,13 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
         final String instanceKey = String.valueOf(max + 1);
         // Put a placeholder here for now, so other instances will not
         // take our key. We will replace with a pool when ready.
-        instanceMap.put(instanceKey, ds);
+        INSTANCE_MAP.put(instanceKey, ds);
         return instanceKey;
     }
 
     static void removeInstance(final String key) {
         if (key != null) {
-            instanceMap.remove(key);
+            INSTANCE_MAP.remove(key);
         }
     }
 
@@ -83,13 +80,10 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
      */
     public static void closeAll() throws Exception {
         // Get iterator to loop over all instances of this data source.
-        final List<Throwable> exceptionList = new ArrayList<>(instanceMap.size());
-        final Iterator<Entry<String, InstanceKeyDataSource>> instanceIterator = instanceMap.entrySet().iterator();
-        while (instanceIterator.hasNext()) {
+        final List<Throwable> exceptionList = new ArrayList<>(INSTANCE_MAP.size());
+        for (final Entry<String, InstanceKeyDataSource> next : INSTANCE_MAP.entrySet()) {
             // Bullet-proof to avoid anything else but problems from InstanceKeyDataSource#close().
-            final Entry<String, InstanceKeyDataSource> next = instanceIterator.next();
             if (next != null) {
-                @SuppressWarnings("resource")
                 final InstanceKeyDataSource value = next.getValue();
                 if (value != null) {
                     try {
@@ -100,7 +94,7 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
                 }
             }
         }
-        instanceMap.clear();
+        INSTANCE_MAP.clear();
         if (!exceptionList.isEmpty()) {
             throw new ListException("Could not close all InstanceKeyDataSource instances.", exceptionList);
         }
@@ -120,8 +114,8 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
             if (isCorrectClass(ref.getClassName())) {
                 final RefAddr refAddr = ref.get("instanceKey");
                 if (refAddr != null && refAddr.getContent() != null) {
-                    // object was bound to jndi via Referenceable api.
-                    obj = instanceMap.get(refAddr.getContent());
+                    // object was bound to JNDI via Referenceable API.
+                    obj = INSTANCE_MAP.get(refAddr.getContent());
                 } else {
                     // Tomcat JNDI creates a Reference out of server.xml
                     // <ResourceParam> configuration and passes it to an
@@ -129,14 +123,14 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
                     String key = null;
                     if (name != null) {
                         key = name.toString();
-                        obj = instanceMap.get(key);
+                        obj = INSTANCE_MAP.get(key);
                     }
                     if (obj == null) {
                         final InstanceKeyDataSource ds = getNewInstance(ref);
                         setCommonProperties(ref, ds);
                         obj = ds;
                         if (key != null) {
-                            instanceMap.put(key, ds);
+                            INSTANCE_MAP.put(key, ds);
                         }
                     }
                 }
@@ -172,7 +166,7 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
         // Pool properties
         refAddr = ref.get("blockWhenExhausted");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultBlockWhenExhausted(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultBlockWhenExhausted(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("evictionPolicyClassName");
@@ -183,7 +177,7 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
         // Pool properties
         refAddr = ref.get("lifo");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultLifo(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultLifo(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("maxIdlePerKey");
@@ -223,22 +217,22 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
 
         refAddr = ref.get("testOnCreate");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultTestOnCreate(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultTestOnCreate(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("testOnBorrow");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultTestOnBorrow(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultTestOnBorrow(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("testOnReturn");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultTestOnReturn(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultTestOnReturn(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("testWhileIdle");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setDefaultTestWhileIdle(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setDefaultTestWhileIdle(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("timeBetweenEvictionRunsMillis");
@@ -260,7 +254,7 @@ abstract class InstanceKeyDataSourceFactory implements ObjectFactory {
 
         refAddr = ref.get("rollbackAfterValidation");
         if (refAddr != null && refAddr.getContent() != null) {
-            ikds.setRollbackAfterValidation(Boolean.valueOf(refAddr.getContent().toString()).booleanValue());
+            ikds.setRollbackAfterValidation(Boolean.parseBoolean(refAddr.getContent().toString()));
         }
 
         refAddr = ref.get("maxConnLifetimeMillis");

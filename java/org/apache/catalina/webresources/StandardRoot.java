@@ -23,6 +23,7 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -127,13 +128,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
             for (WebResourceSet webResourceSet : list) {
                 if (!webResourceSet.getClassLoaderOnly()) {
                     String[] entries = webResourceSet.list(path);
-                    for (String entry : entries) {
-                        result.add(entry);
-                    }
+                    result.addAll(Arrays.asList(entries));
                 }
             }
         }
-        return result.toArray(new String[result.size()]);
+        return result.toArray(new String[0]);
     }
 
 
@@ -206,7 +205,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
         return getResource(path, true, false);
     }
 
-    private WebResource getResource(String path, boolean validate,
+    protected WebResource getResource(String path, boolean validate,
             boolean useClassLoaderResources) {
         if (validate) {
             path = validate(path);
@@ -237,7 +236,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
      * that the path is a String that starts with '/' and checks that the path
      * can be normalized without stepping outside of the root.
      *
-     * @param path
+     * @param path The path to validate
      * @return  the normalized path
      */
     private String validate(String path) {
@@ -336,7 +335,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
             result.add(main.getResource(path));
         }
 
-        return result.toArray(new WebResource[result.size()]);
+        return result.toArray(new WebResource[0]);
     }
 
     @Override
@@ -437,7 +436,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getPreResources() {
-        return preResources.toArray(new WebResourceSet[preResources.size()]);
+        return preResources.toArray(new WebResourceSet[0]);
     }
 
     @Override
@@ -448,7 +447,7 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getJarResources() {
-        return jarResources.toArray(new WebResourceSet[jarResources.size()]);
+        return jarResources.toArray(new WebResourceSet[0]);
     }
 
     @Override
@@ -459,11 +458,11 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
 
     @Override
     public WebResourceSet[] getPostResources() {
-        return postResources.toArray(new WebResourceSet[postResources.size()]);
+        return postResources.toArray(new WebResourceSet[0]);
     }
 
     protected WebResourceSet[] getClassResources() {
-        return classResources.toArray(new WebResourceSet[classResources.size()]);
+        return classResources.toArray(new WebResourceSet[0]);
     }
 
     protected void addClassResources(WebResourceSet webResourceSet) {
@@ -677,14 +676,14 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     protected void initInternal() throws LifecycleException {
         super.initInternal();
 
-        cacheJmxName = register(cache, getObjectNameKeyProperties() + ",name=Cache");
-
-        registerURLStreamHandlerFactory();
-
         if (context == null) {
             throw new IllegalStateException(
                     sm.getString("standardRoot.noContext"));
         }
+
+        cacheJmxName = register(cache, getObjectNameKeyProperties() + ",name=Cache");
+
+        registerURLStreamHandlerFactory();
 
         for (List<WebResourceSet> list : allResources) {
             for (WebResourceSet webResourceSet : list) {

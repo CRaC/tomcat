@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.realm;
 
 
@@ -47,7 +45,11 @@ import org.apache.tomcat.util.ExceptionUtils;
 * @author Craig R. McClanahan
 * @author Carson McDonald
 * @author Ignacio Ortega
+*
+* @deprecated Will be removed in Tomcat 10 onwards. Use the DataSourceRealm
+*             instead.
 */
+@Deprecated
 public class JDBCRealm
     extends RealmBase {
 
@@ -314,7 +316,7 @@ public class JDBCRealm
         // This needs rewritten with better pooling support, the existing code
         // needs signature changes since the Prepared statements needs cached
         // with the connections.
-        // The code below will try twice if there is a SQLException so the
+        // The code below will try twice if there is an SQLException so the
         // connection may try to be opened again. On normal conditions (including
         // invalid login - the above is only used once.
         int numberOfTries = 2;
@@ -330,7 +332,7 @@ public class JDBCRealm
 
 
                 // Return the Principal (if any)
-                return (principal);
+                return principal;
 
             } catch (SQLException e) {
 
@@ -338,8 +340,9 @@ public class JDBCRealm
                 containerLog.error(sm.getString("jdbcRealm.exception"), e);
 
                 // Close the connection so that it gets reopened next time
-                if (dbConnection != null)
+                if (dbConnection != null) {
                     close(dbConnection);
+                }
 
             }
 
@@ -375,9 +378,10 @@ public class JDBCRealm
         // No user or no credentials
         // Can't possibly authenticate, don't bother the database then
         if (username == null || credentials == null) {
-            if (containerLog.isTraceEnabled())
+            if (containerLog.isTraceEnabled()) {
                 containerLog.trace(sm.getString("jdbcRealm.authenticateFailure",
                                                 username));
+            }
             return null;
         }
 
@@ -389,9 +393,10 @@ public class JDBCRealm
             // Waste a bit of time as not to reveal that the user does not exist.
             getCredentialHandler().mutate(credentials);
 
-            if (containerLog.isTraceEnabled())
+            if (containerLog.isTraceEnabled()) {
                 containerLog.trace(sm.getString("jdbcRealm.authenticateFailure",
                                                 username));
+            }
             return null;
         }
 
@@ -399,20 +404,22 @@ public class JDBCRealm
         boolean validated = getCredentialHandler().matches(credentials, dbCredentials);
 
         if (validated) {
-            if (containerLog.isTraceEnabled())
+            if (containerLog.isTraceEnabled()) {
                 containerLog.trace(sm.getString("jdbcRealm.authenticateSuccess",
                                                 username));
+            }
         } else {
-            if (containerLog.isTraceEnabled())
+            if (containerLog.isTraceEnabled()) {
                 containerLog.trace(sm.getString("jdbcRealm.authenticateFailure",
                                                 username));
+            }
             return null;
         }
 
         ArrayList<String> roles = getRoles(username);
 
         // Create and return a suitable Principal for this user
-        return (new GenericPrincipal(username, credentials, roles));
+        return new GenericPrincipal(username, credentials, roles);
     }
 
 
@@ -430,8 +437,9 @@ public class JDBCRealm
     protected void close(Connection dbConnection) {
 
         // Do nothing if the database connection is already closed
-        if (dbConnection == null)
+        if (dbConnection == null) {
             return;
+        }
 
         // Close our prepared statements (if any)
         try {
@@ -498,7 +506,7 @@ public class JDBCRealm
             preparedCredentials.setString(1, username);
         }
 
-        return (preparedCredentials);
+        return preparedCredentials;
     }
 
 
@@ -525,7 +533,7 @@ public class JDBCRealm
         // This needs rewritten with better pooling support, the existing code
         // needs signature changes since the Prepared statements needs cached
         // with the connections.
-        // The code below will try twice if there is a SQLException so the
+        // The code below will try twice if there is an SQLException so the
         // connection may try to be opened again. On normal conditions (including
         // invalid login - the above is only used once.
         int numberOfTries = 2;
@@ -572,9 +580,9 @@ public class JDBCRealm
     @Override
     protected synchronized Principal getPrincipal(String username) {
 
-        return (new GenericPrincipal(username,
+        return new GenericPrincipal(username,
                                      getPassword(username),
-                                     getRoles(username)));
+                                     getRoles(username));
 
     }
 
@@ -597,7 +605,7 @@ public class JDBCRealm
         // This needs rewritten wuth better pooling support, the existing code
         // needs signature changes since the Prepared statements needs cached
         // with the connections.
-        // The code below will try twice if there is a SQLException so the
+        // The code below will try twice if there is an SQLException so the
         // connection may try to be opened again. On normal conditions (including
         // invalid login - the above is only used once.
         int numberOfTries = 2;
@@ -627,8 +635,9 @@ public class JDBCRealm
                 containerLog.error(sm.getString("jdbcRealm.exception"), e);
 
                 // Close the connection so that it gets reopened next time
-                if (dbConnection != null)
+                if (dbConnection != null) {
                     close(dbConnection);
+                }
             }
 
             numberOfTries--;
@@ -647,8 +656,9 @@ public class JDBCRealm
     protected Connection open() throws SQLException {
 
         // Do nothing if there is a database connection already open
-        if (dbConnection != null)
-            return (dbConnection);
+        if (dbConnection != null) {
+            return dbConnection;
+        }
 
         // Instantiate our database driver if necessary
         if (driver == null) {
@@ -663,17 +673,19 @@ public class JDBCRealm
 
         // Open a new connection
         Properties props = new Properties();
-        if (connectionName != null)
+        if (connectionName != null) {
             props.put("user", connectionName);
-        if (connectionPassword != null)
+        }
+        if (connectionPassword != null) {
             props.put("password", connectionPassword);
+        }
         dbConnection = driver.connect(connectionURL, props);
         if (dbConnection == null) {
             throw new SQLException(sm.getString(
                     "jdbcRealm.open.invalidurl",driverName, connectionURL));
         }
         dbConnection.setAutoCommit(false);
-        return (dbConnection);
+        return dbConnection;
 
     }
 
@@ -704,7 +716,7 @@ public class JDBCRealm
         }
 
         preparedRoles.setString(1, username);
-        return (preparedRoles);
+        return preparedRoles;
 
     }
 

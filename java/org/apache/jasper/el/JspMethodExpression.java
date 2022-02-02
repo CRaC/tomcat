@@ -54,13 +54,19 @@ public final class JspMethodExpression extends MethodExpression implements
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (MethodNotFoundException e) {
-            if (e instanceof JspMethodNotFoundException) throw e;
+            if (e instanceof JspMethodNotFoundException) {
+                throw e;
+            }
             throw new JspMethodNotFoundException(this.mark, e);
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
     }
@@ -75,15 +81,26 @@ public final class JspMethodExpression extends MethodExpression implements
             context.notifyAfterEvaluation(getExpressionString());
             return result;
         } catch (MethodNotFoundException e) {
-            if (e instanceof JspMethodNotFoundException) throw e;
+            if (e instanceof JspMethodNotFoundException) {
+                throw e;
+            }
             throw new JspMethodNotFoundException(this.mark, e);
         } catch (PropertyNotFoundException e) {
-            if (e instanceof JspPropertyNotFoundException) throw e;
+            if (e instanceof JspPropertyNotFoundException) {
+                throw e;
+            }
             throw new JspPropertyNotFoundException(this.mark, e);
         } catch (ELException e) {
-            if (e instanceof JspELException) throw e;
+            if (e instanceof JspELException) {
+                throw e;
+            }
             throw new JspELException(this.mark, e);
         }
+    }
+
+    @Override
+    public boolean isParametersProvided() {
+        return this.target.isParametersProvided();
     }
 
     @Override

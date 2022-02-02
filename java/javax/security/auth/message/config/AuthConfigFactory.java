@@ -16,7 +16,6 @@
  */
 package javax.security.auth.message.config;
 
-import java.lang.reflect.InvocationTargetException;
 import java.security.AccessController;
 import java.security.Permission;
 import java.security.PrivilegedAction;
@@ -67,9 +66,8 @@ public abstract class AuthConfigFactory {
                     factory = AccessController.doPrivileged(
                             new PrivilegedExceptionAction<AuthConfigFactory>() {
                         @Override
-                        public AuthConfigFactory run() throws ClassNotFoundException,
-                                InstantiationException, IllegalAccessException, IllegalArgumentException,
-                                InvocationTargetException, NoSuchMethodException, SecurityException {
+                        public AuthConfigFactory run() throws ReflectiveOperationException,
+                                IllegalArgumentException, SecurityException {
                             // Load this class with the same class loader as used for
                             // this class. Note that the Thread context class loader
                             // should not be used since that would trigger a memory leak
@@ -81,11 +79,10 @@ public abstract class AuthConfigFactory {
                 } catch (PrivilegedActionException e) {
                     Exception inner = e.getException();
                     if (inner instanceof InstantiationException) {
-                        throw (SecurityException) new SecurityException("AuthConfigFactory error:" +
-                                inner.getCause().getMessage()).initCause(inner.getCause());
+                        throw new SecurityException("AuthConfigFactory error:" +
+                                inner.getCause().getMessage(), inner.getCause());
                     } else {
-                        throw (SecurityException) new SecurityException(
-                                "AuthConfigFactory error: " + inner).initCause(inner);
+                        throw new SecurityException("AuthConfigFactory error: " + inner, inner);
                     }
                 }
             }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.ByteArrayOutputStream;
@@ -65,8 +64,9 @@ public class AntCompiler extends Compiler {
     // Lazy eval - if we don't need to compile we probably don't need the project
     protected Project getProject() {
 
-        if (project != null)
+        if (project != null) {
             return project;
+        }
 
         // Initializing project
         project = new Project();
@@ -80,8 +80,9 @@ public class AntCompiler extends Compiler {
         }
 
         if( options.getCompiler() != null ) {
-            if( log.isDebugEnabled() )
+            if( log.isDebugEnabled() ) {
                 log.debug("Compiler " + options.getCompiler() );
+            }
             project.setProperty("build.compiler", options.getCompiler() );
         }
         project.init();
@@ -250,7 +251,10 @@ public class AntCompiler extends Compiler {
 
         if (!ctxt.keepGenerated()) {
             File javaFile = new File(javaFileName);
-            javaFile.delete();
+            if (!javaFile.delete()) {
+                throw new JasperException(Localizer.getMessage(
+                        "jsp.warning.compiler.javafile.delete.fail", javaFile));
+            }
         }
 
         if (be != null) {

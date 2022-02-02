@@ -25,6 +25,7 @@ import java.util.concurrent.Executor;
 import javax.websocket.SendHandler;
 import javax.websocket.SendResult;
 
+import org.apache.coyote.http11.upgrade.UpgradeInfo;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.net.AbstractEndpoint;
@@ -44,16 +45,17 @@ public class WsRemoteEndpointImplServer extends WsRemoteEndpointImplBase {
     private final Log log = LogFactory.getLog(WsRemoteEndpointImplServer.class); // must not be static
 
     private final SocketWrapperBase<?> socketWrapper;
+    private final UpgradeInfo upgradeInfo;
     private final WsWriteTimeout wsWriteTimeout;
     private volatile SendHandler handler = null;
     private volatile ByteBuffer[] buffers = null;
 
     private volatile long timeoutExpiry = -1;
-    private volatile boolean close;
 
-    public WsRemoteEndpointImplServer(SocketWrapperBase<?> socketWrapper,
+    public WsRemoteEndpointImplServer(SocketWrapperBase<?> socketWrapper, UpgradeInfo upgradeInfo,
             WsServerContainer serverContainer) {
         this.socketWrapper = socketWrapper;
+        this.upgradeInfo = upgradeInfo;
         this.wsWriteTimeout = serverContainer.getTimeout();
     }
 
@@ -103,6 +105,13 @@ public class WsRemoteEndpointImplServer extends WsRemoteEndpointImplBase {
     }
 
 
+    @Override
+    protected void updateStats(long payloadLength) {
+        upgradeInfo.addMsgsSent(1);
+        upgradeInfo.addBytesSent(payloadLength);
+    }
+
+
     public void onWritePossible(boolean useDispatch) {
         ByteBuffer[] buffers = this.buffers;
         if (buffers == null) {
@@ -129,9 +138,6 @@ public class WsRemoteEndpointImplServer extends WsRemoteEndpointImplBase {
                     if (complete) {
                         wsWriteTimeout.unregister(this);
                         clearHandler(null, useDispatch);
-                        if (close) {
-                            close();
-                        }
                     }
                     break;
                 }
@@ -165,7 +171,7 @@ public class WsRemoteEndpointImplServer extends WsRemoteEndpointImplBase {
         }
         try {
             socketWrapper.close();
-        } catch (IOException e) {
+        } catch (Exception e) {
             if (log.isInfoEnabled()) {
                 log.info(sm.getString("wsRemoteEndpointServer.closeFailed"), e);
             }

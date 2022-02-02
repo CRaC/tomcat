@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.descriptor.web;
 
 import java.io.Serializable;
@@ -41,7 +39,7 @@ public class SecurityRoleRef implements Serializable {
     private String name = null;
 
     public String getName() {
-        return (this.name);
+        return this.name;
     }
 
     public void setName(String name) {
@@ -55,7 +53,7 @@ public class SecurityRoleRef implements Serializable {
     private String link = null;
 
     public String getLink() {
-        return (this.link);
+        return this.link;
     }
 
     public void setLink(String link) {
@@ -72,7 +70,6 @@ public class SecurityRoleRef implements Serializable {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("SecurityRoleRef[");
         sb.append("name=");
         sb.append(name);
@@ -80,9 +77,8 @@ public class SecurityRoleRef implements Serializable {
             sb.append(", link=");
             sb.append(link);
         }
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 

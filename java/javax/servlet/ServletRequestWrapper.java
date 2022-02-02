@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Enumeration;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ResourceBundle;
 
 /**
  * Provides a convenient implementation of the ServletRequest interface that can
@@ -28,10 +29,15 @@ import java.util.Map;
  * class implements the Wrapper or Decorator pattern. Methods default to calling
  * through to the wrapped request object.
  *
- * @since Servlet 2.3
  * @see javax.servlet.ServletRequest
+ *
+ * @since Servlet 2.3
  */
 public class ServletRequestWrapper implements ServletRequest {
+    private static final String LSTRING_FILE = "javax.servlet.LocalStrings";
+    private static final ResourceBundle lStrings =
+        ResourceBundle.getBundle(LSTRING_FILE);
+
     private ServletRequest request;
 
     /**
@@ -43,7 +49,7 @@ public class ServletRequestWrapper implements ServletRequest {
      */
     public ServletRequestWrapper(ServletRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("Request cannot be null");
+            throw new IllegalArgumentException(lStrings.getString("wrapper.nullRequest"));
         }
         this.request = request;
     }
@@ -58,13 +64,14 @@ public class ServletRequestWrapper implements ServletRequest {
 
     /**
      * Sets the request object being wrapped.
+     *
      * @param request The new wrapped request.
      *
      * @throws IllegalArgumentException if the request is null.
      */
     public void setRequest(ServletRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("Request cannot be null");
+            throw new IllegalArgumentException(lStrings.getString("wrapper.nullRequest"));
         }
         this.request = request;
     }

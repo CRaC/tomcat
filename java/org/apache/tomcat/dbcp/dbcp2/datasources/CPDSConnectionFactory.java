@@ -31,14 +31,14 @@ import javax.sql.ConnectionPoolDataSource;
 import javax.sql.PooledConnection;
 
 import org.apache.tomcat.dbcp.dbcp2.Utils;
+import org.apache.tomcat.dbcp.pool2.DestroyMode;
 import org.apache.tomcat.dbcp.pool2.ObjectPool;
 import org.apache.tomcat.dbcp.pool2.PooledObject;
 import org.apache.tomcat.dbcp.pool2.PooledObjectFactory;
 import org.apache.tomcat.dbcp.pool2.impl.DefaultPooledObject;
 
 /**
- * A {@link PooledObjectFactory} that creates
- * {@link org.apache.tomcat.dbcp.dbcp2.PoolableConnection PoolableConnection}s.
+ * A {@link PooledObjectFactory} that creates {@link org.apache.tomcat.dbcp.dbcp2.PoolableConnection PoolableConnection}s.
  *
  * @since 2.0
  */
@@ -59,8 +59,7 @@ class CPDSConnectionFactory
     /**
      * Map of PooledConnections for which close events are ignored. Connections are muted when they are being validated.
      */
-    private final Set<PooledConnection> validatingSet = Collections
-            .newSetFromMap(new ConcurrentHashMap<PooledConnection, Boolean>());
+    private final Set<PooledConnection> validatingSet = Collections.newSetFromMap(new ConcurrentHashMap<PooledConnection,Boolean>());
 
     /**
      * Map of PooledConnectionAndInfo instances
@@ -151,7 +150,7 @@ class CPDSConnectionFactory
 
     @Override
     public synchronized PooledObject<PooledConnectionAndInfo> makeObject() {
-        PooledConnectionAndInfo pci;
+        final PooledConnectionAndInfo pci;
         try {
             PooledConnection pc = null;
             if (userName == null) {
@@ -181,6 +180,13 @@ class CPDSConnectionFactory
     @Override
     public void destroyObject(final PooledObject<PooledConnectionAndInfo> p) throws Exception {
         doDestroyObject(p.getObject());
+    }
+
+
+    @Override
+    public void destroyObject(PooledObject<PooledConnectionAndInfo> p, DestroyMode mode)
+            throws Exception {
+        destroyObject(p);
     }
 
     private void doDestroyObject(final PooledConnectionAndInfo pci) throws Exception {
@@ -227,11 +233,7 @@ class CPDSConnectionFactory
                 conn = pconn.getConnection();
                 stmt = conn.createStatement();
                 rset = stmt.executeQuery(validationQuery);
-                if (rset.next()) {
-                    valid = true;
-                } else {
-                    valid = false;
-                }
+                valid = rset.next();
                 if (rollbackAfterValidation) {
                     conn.rollback();
                 }
@@ -390,11 +392,37 @@ class CPDSConnectionFactory
 
     private void validateLifetime(final PooledObject<PooledConnectionAndInfo> p) throws Exception {
         if (maxConnLifetimeMillis > 0) {
-            final long lifetime = System.currentTimeMillis() - p.getCreateTime();
-            if (lifetime > maxConnLifetimeMillis) {
-                throw new Exception(Utils.getMessage("connectionFactory.lifetimeExceeded", Long.valueOf(lifetime),
+            final long lifetimeMillis = System.currentTimeMillis() - p.getCreateTime();
+            if (lifetimeMillis > maxConnLifetimeMillis) {
+                throw new Exception(Utils.getMessage("connectionFactory.lifetimeExceeded", Long.valueOf(lifetimeMillis),
                         Long.valueOf(maxConnLifetimeMillis)));
             }
         }
+    }
+
+    /**
+     * @since 2.6.0
+     */
+    @Override
+    public synchronized String toString() {
+        final StringBuilder builder = new StringBuilder(super.toString());
+        builder.append("[cpds=");
+        builder.append(cpds);
+        builder.append(", validationQuery=");
+        builder.append(validationQuery);
+        builder.append(", validationQueryTimeoutSeconds=");
+        builder.append(validationQueryTimeoutSeconds);
+        builder.append(", rollbackAfterValidation=");
+        builder.append(rollbackAfterValidation);
+        builder.append(", pool=");
+        builder.append(pool);
+        builder.append(", maxConnLifetimeMillis=");
+        builder.append(maxConnLifetimeMillis);
+        builder.append(", validatingSet=");
+        builder.append(validatingSet);
+        builder.append(", pcMap=");
+        builder.append(pcMap);
+        builder.append(']');
+        return builder.toString();
     }
 }

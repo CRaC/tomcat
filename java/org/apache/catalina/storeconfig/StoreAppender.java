@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.beans.IndexedPropertyDescriptor;
@@ -71,8 +70,9 @@ public class StoreAppender {
             StoreDescription aDesc) throws Exception {
         aWriter.print("<");
         aWriter.print(aDesc.getTag());
-        if (aDesc.isAttributes() && bean != null)
+        if (aDesc.isAttributes() && bean != null) {
             printAttributes(aWriter, indent, bean, aDesc);
+        }
         aWriter.println(">");
     }
 
@@ -89,8 +89,9 @@ public class StoreAppender {
             StoreDescription aDesc) throws Exception {
         aWriter.print("<");
         aWriter.print(aDesc.getTag());
-        if (aDesc.isAttributes() && bean != null)
+        if (aDesc.isAttributes() && bean != null) {
             printAttributes(aWriter, indent, bean, aDesc);
+        }
         aWriter.println("/>");
     }
 
@@ -131,8 +132,9 @@ public class StoreAppender {
             for (int i = 0; i < elements.length; i++) {
                 printIndent(aWriter, indent + 4);
                 aWriter.print(elements[i]);
-                if (i + 1 < elements.length)
+                if (i + 1 < elements.length) {
                     aWriter.println(",");
+                }
             }
             printIndent(aWriter, indent + 2);
             aWriter.print("</");
@@ -153,9 +155,9 @@ public class StoreAppender {
     public void printTagArray(PrintWriter aWriter, String tag, int indent,
             String[] elements) throws Exception {
         if (elements != null) {
-            for (int i = 0; i < elements.length; i++) {
+            for (String element : elements) {
                 printIndent(aWriter, indent);
-                printTagContent(aWriter, tag, elements[i]);
+                printTagContent(aWriter, tag, element);
             }
         }
     }
@@ -229,10 +231,10 @@ public class StoreAppender {
 
         // Create blank instance
         Object bean2 = defaultInstance(bean);
-        for (int i = 0; i < descriptors.length; i++) {
-            Object value = checkAttribute(desc, descriptors[i], descriptors[i].getName(), bean, bean2);
+        for (PropertyDescriptor descriptor : descriptors) {
+            Object value = checkAttribute(desc, descriptor, descriptor.getName(), bean, bean2);
             if (value != null) {
-                printAttribute(writer, indent, bean, desc, descriptors[i].getName(), bean2, value);
+                printAttribute(writer, indent, bean, desc, descriptor.getName(), bean2, value);
             }
         }
 
@@ -298,8 +300,9 @@ public class StoreAppender {
      * @param value The attribute value
      */
     protected void printAttribute(PrintWriter writer, int indent, Object bean, StoreDescription desc, String attributeName, Object bean2, Object value) {
-        if (isPrintValue(bean, bean2, attributeName, desc))
+        if (isPrintValue(bean, bean2, attributeName, desc)) {
             printValue(writer, indent, attributeName, value);
+        }
     }
 
     /**
@@ -390,7 +393,7 @@ public class StoreAppender {
                 filtered.append(c);
             }
         }
-        return (filtered.toString());
+        return filtered.toString();
     }
 
     /**
@@ -403,8 +406,8 @@ public class StoreAppender {
      */
     protected boolean isPersistable(Class<?> clazz) {
 
-        for (int i = 0; i < persistables.length; i++) {
-            if (persistables[i] == clazz || persistables[i].isAssignableFrom(clazz)) {
+        for (Class<?> persistable : persistables) {
+            if (persistable == clazz || persistable.isAssignableFrom(clazz)) {
                 return true;
             }
         }

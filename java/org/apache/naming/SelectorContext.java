@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.naming;
 
 import java.util.Hashtable;
@@ -751,10 +749,10 @@ public class SelectorContext implements Context {
         throws NamingException {
 
         if ((!initialContext) && (name.startsWith(prefix))) {
-            return (name.substring(prefixLength));
+            return name.substring(prefixLength);
         } else {
             if (initialContext) {
-                return (name);
+                return name;
             } else {
                 throw new NamingException
                     (sm.getString("selectorContext.noJavaUrl"));

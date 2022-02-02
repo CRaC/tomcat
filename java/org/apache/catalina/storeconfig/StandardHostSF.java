@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -80,9 +79,10 @@ public class StandardHostSF extends StoreFactoryBase {
             Valve valves[] = host.getPipeline().getValves();
             if(valves != null && valves.length > 0 ) {
                 List<Valve> hostValves = new ArrayList<>() ;
-                for(int i = 0 ; i < valves.length ; i++ ) {
-                    if(!( valves[i] instanceof ClusterValve))
-                        hostValves.add(valves[i]);
+                for (Valve valve : valves) {
+                    if (!(valve instanceof ClusterValve)) {
+                        hostValves.add(valve);
+                    }
                 }
                 storeElementArray(aWriter, indent, hostValves.toArray());
             }

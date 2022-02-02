@@ -14,7 +14,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
 package javax.servlet.jsp.el;
 
 import java.beans.FeatureDescriptor;
@@ -40,8 +39,9 @@ import javax.servlet.jsp.JspContext;
 import javax.servlet.jsp.PageContext;
 
 /**
+ * Provides resolution in EL for the implicit variables of a JSP page.
  *
- * @since 2.1
+ * @since JSP 2.1
  */
 public class ImplicitObjectELResolver extends ELResolver {
 
@@ -72,6 +72,9 @@ public class ImplicitObjectELResolver extends ELResolver {
 
     private static final int SESSION_SCOPE = 10;
 
+    /**
+     * Creates an instance of the implicit object resolver for EL.
+     */
     public ImplicitObjectELResolver() {
         super();
     }
@@ -162,12 +165,12 @@ public class ImplicitObjectELResolver extends ELResolver {
     public Iterator<FeatureDescriptor> getFeatureDescriptors(ELContext context, Object base) {
         List<FeatureDescriptor> feats = new ArrayList<>(SCOPE_NAMES.length);
         FeatureDescriptor feat;
-        for (int i = 0; i < SCOPE_NAMES.length; i++) {
+        for (String scopeName : SCOPE_NAMES) {
             feat = new FeatureDescriptor();
-            feat.setDisplayName(SCOPE_NAMES[i]);
+            feat.setDisplayName(scopeName);
             feat.setExpert(false);
             feat.setHidden(false);
-            feat.setName(SCOPE_NAMES[i]);
+            feat.setName(scopeName);
             feat.setPreferred(true);
             feat.setValue(RESOLVABLE_AT_DESIGN_TIME, Boolean.TRUE);
             feat.setValue(TYPE, String.class);
@@ -254,12 +257,11 @@ public class ImplicitObjectELResolver extends ELResolver {
                 this.cookie = new ScopeMap<Cookie>() {
                     @Override
                     protected Enumeration<String> getAttributeNames() {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
                             Vector<String> v = new Vector<>();
-                            for (int i = 0; i < c.length; i++) {
-                                v.add(c[i].getName());
+                            for (Cookie cookie : cookies) {
+                                v.add(cookie.getName());
                             }
                             return v.elements();
                         }
@@ -268,12 +270,11 @@ public class ImplicitObjectELResolver extends ELResolver {
 
                     @Override
                     protected Cookie getAttribute(String name) {
-                        Cookie[] c = ((HttpServletRequest) page.getRequest())
-                                .getCookies();
-                        if (c != null) {
-                            for (int i = 0; i < c.length; i++) {
-                                if (name.equals(c[i].getName())) {
-                                    return c[i];
+                        Cookie[] cookies = ((HttpServletRequest) page.getRequest()).getCookies();
+                        if (cookies != null) {
+                            for (Cookie cookie : cookies) {
+                                if (name.equals(cookie.getName())) {
+                                    return cookie;
                                 }
                             }
                         }
@@ -323,7 +324,7 @@ public class ImplicitObjectELResolver extends ELResolver {
                             while (e.hasMoreElements()) {
                                 list.add(e.nextElement());
                             }
-                            return list.toArray(new String[list.size()]);
+                            return list.toArray(new String[0]);
                         }
                         return null;
                     }

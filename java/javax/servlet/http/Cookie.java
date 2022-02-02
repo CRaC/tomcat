@@ -17,6 +17,8 @@
 package javax.servlet.http;
 
 import java.io.Serializable;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.BitSet;
 import java.util.Locale;
@@ -54,39 +56,114 @@ import java.util.ResourceBundle;
 public class Cookie implements Cloneable, Serializable {
 
     private static final CookieNameValidator validation;
+
     static {
+        boolean strictServletCompliance;
         boolean strictNaming;
-        String prop = System.getProperty("org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
-        if (prop != null) {
-            strictNaming = Boolean.parseBoolean(prop);
+        boolean allowSlash;
+        String propStrictNaming;
+        String propFwdSlashIsSeparator;
+
+        if (System.getSecurityManager() == null) {
+            strictServletCompliance = Boolean.getBoolean(
+                    "org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
+            propStrictNaming = System.getProperty(
+                    "org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
+            propFwdSlashIsSeparator = System.getProperty(
+                    "org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
         } else {
-            strictNaming = Boolean.getBoolean("org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
+            strictServletCompliance = AccessController.doPrivileged(
+                    new PrivilegedAction<Boolean>() {
+                        @Override
+                        public Boolean run() {
+                            return Boolean.valueOf(System.getProperty(
+                                    "org.apache.catalina.STRICT_SERVLET_COMPLIANCE"));
+                        }
+                    }
+                ).booleanValue();
+            propStrictNaming = AccessController.doPrivileged(
+                    new PrivilegedAction<String>() {
+                        @Override
+                        public String run() {
+                            return System.getProperty(
+                                    "org.apache.tomcat.util.http.ServerCookie.STRICT_NAMING");
+                        }
+                    }
+                );
+            propFwdSlashIsSeparator = AccessController.doPrivileged(
+                    new PrivilegedAction<String>() {
+                        @Override
+                        public String run() {
+                            return System.getProperty(
+                                    "org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
+                        }
+                    }
+                );
+        }
+
+        if (propStrictNaming == null) {
+            strictNaming = strictServletCompliance;
+        } else {
+            strictNaming = Boolean.parseBoolean(propStrictNaming);
+        }
+
+        if (propFwdSlashIsSeparator == null) {
+            allowSlash = !strictServletCompliance;
+        } else {
+            allowSlash = !Boolean.parseBoolean(propFwdSlashIsSeparator);
         }
 
         if (strictNaming) {
-            validation = new RFC2109Validator();
-        }
-        else {
+            validation = new RFC2109Validator(allowSlash);
+        } else {
             validation = new RFC6265Validator();
         }
     }
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * Cookie name.
+     */
     private final String name;
+
+    /**
+     * Cookie value.
+     */
     private String value;
 
-    private int version = 0; // ;Version=1 ... means RFC 2109 style
+    /**
+     * Cookie version value. {@code ;Version=1 ...} means RFC 2109 style.
+     */
+    private int version = 0;
 
     //
     // Attributes encoded in the header's cookie fields.
     //
-    private String comment; // ;Comment=VALUE ... describes cookie's use
-    private String domain; // ;Domain=VALUE ... domain that sees cookie
-    private int maxAge = -1; // ;Max-Age=VALUE ... cookies auto-expire
-    private String path; // ;Path=VALUE ... URLs that see the cookie
-    private boolean secure; // ;Secure ... e.g. use SSL
-    private boolean httpOnly; // Not in cookie specs, but supported by browsers
+    /**
+     * {@code ;Comment=VALUE ...} describes cookie's use.
+     */
+    private String comment;
+    /**
+     * {@code ;Domain=VALUE ...} domain that sees cookie
+     */
+    private String domain;
+    /**
+     * {@code ;Max-Age=VALUE ...} cookies auto-expire
+     */
+    private int maxAge = -1;
+    /**
+     * {@code ;Path=VALUE ...} URLs that see the cookie
+     */
+    private String path;
+    /**
+     * {@code ;Secure ...} e.g. use SSL
+     */
+    private boolean secure;
+    /**
+     * Not in cookie specs, but supported by browsers.
+     */
+    private boolean httpOnly;
 
     /**
      * Constructs a cookie with a specified name and value.
@@ -265,7 +342,7 @@ public class Cookie implements Cloneable, Serializable {
      * using any protocol.
      *
      * @return <code>true</code> if the browser uses a secure protocol;
-     *         otherwise, <code>true</code>
+     *         otherwise, <code>false</code>
      * @see #setSecure
      */
     public boolean getSecure() {
@@ -428,15 +505,8 @@ class RFC6265Validator extends CookieNameValidator {
 }
 
 class RFC2109Validator extends RFC6265Validator {
-    RFC2109Validator() {
+    RFC2109Validator(boolean allowSlash) {
         // special treatment to allow for FWD_SLASH_IS_SEPARATOR property
-        boolean allowSlash;
-        String prop = System.getProperty("org.apache.tomcat.util.http.ServerCookie.FWD_SLASH_IS_SEPARATOR");
-        if (prop != null) {
-            allowSlash = !Boolean.parseBoolean(prop);
-        } else {
-            allowSlash = !Boolean.getBoolean("org.apache.catalina.STRICT_SERVLET_COMPLIANCE");
-        }
         if (allowSlash) {
             allowed.set('/');
         }

@@ -244,7 +244,16 @@
         <li>
         <code>%{SSL:variable}</code>, where <em>variable</em> is the
         name of an SSL environment
-        variable, are not implemented yet.  Example:
+        variable, are implemented, except
+        <code>SSL_SESSION_RESUMED</code>, <code>SSL_SECURE_RENEG</code>,
+        <code>SSL_COMPRESS_METHOD</code>, <code>SSL_TLS_SNI</code>,
+        <code>SSL_SRP_USER</code>, <code>SSL_SRP_USERINFO</code>,
+        <code>SSL_CLIENT_VERIFY</code>,
+        <code>SSL_CLIENT_SAN_OTHER_msUPN_n</code>,
+        <code>SSL_CLIENT_CERT_RFC4523_CEA</code>.
+        Also, the variables related to the server
+        certificate, prefixed by <code>SSL_SERVER_</code> are not available.
+        Example:
         <code>%{SSL:SSL_CIPHER_USEKEYSIZE}</code> may expand to
         <code>128</code>.</li>
 
@@ -394,6 +403,15 @@ RewriteRule  ^/$                 /homepage.std.html  [L]</source>
 
     <p>Syntax: <code>RewriteMap name rewriteMapClassName optionalParameters</code></p>
 
+    <p>The <code>rewriteMapClassName</code> value also allows special values:
+    <ul>
+    <li><code>int:toupper</code>: Special map converting passed values to upper case</li>
+    <li><code>int:tolower</code>: Special map converting passed values to lower case</li>
+    <li><code>int:escape</code>: URL escape the passed value</li>
+    <li><code>int:unescape</code>: URL unescape the passed value</li>
+    </ul>
+    </p>
+
     <p>The maps are implemented using an interface that users must implement. Its class
     name is <code>org.apache.catalina.valves.rewrite.RewriteMap</code>, and its code is:</p>
 
@@ -422,6 +440,16 @@ public interface RewriteMap {
       applied. This may not be the originally requested URL,
       which may already have matched a previous rule, and have been
       altered.</p>
+
+      <p><strong>Security warning:</strong> Due to the way Java's
+      regex matching is done, poorly formed regex patterns are vulnerable
+      to "catastrophic backtracking", also known as "regular expression
+      denial of service" or ReDoS. Therefore, extra caution should be used
+      for RewriteRule patterns. In general it is difficult to automatically
+      detect such vulnerable regex, and so a good defense is to read a bit
+      on the subject of catastrophic backtracking. A good reference is the
+      <a href="https://www.owasp.org/index.php/Regular_expression_Denial_of_Service_-_ReDoS">
+      OWASP ReDoS guide</a>.</p>
 
       <p>Some hints on the syntax of regular
       expressions:</p>
@@ -581,7 +609,7 @@ cannot use <code>$N</code> in the substitution string!
         <li>'<strong><code>forbidden|F</code></strong>' (force URL
         to be <strong>f</strong>orbidden)<br />
         This forces the current URL to be forbidden - it immediately
-        sends back a HTTP response of 403 (FORBIDDEN).
+        sends back an HTTP response of 403 (FORBIDDEN).
         Use this flag in conjunction with
         appropriate RewriteConds to conditionally block some
         URLs.</li>
@@ -589,7 +617,7 @@ cannot use <code>$N</code> in the substitution string!
         <li>'<strong><code>gone|G</code></strong>' (force URL to be
         <strong>g</strong>one)<br />
         This forces the current URL to be gone - it
-        immediately sends back a HTTP response of 410 (GONE). Use
+        immediately sends back an HTTP response of 410 (GONE). Use
         this flag to mark pages which no longer exist as gone.</li>
 
         <li>
@@ -681,7 +709,7 @@ cannot use <code>$N</code> in the substitution string!
           Prefix <em>Substitution</em> with
           <code>http://thishost[:thisport]/</code> (which makes the
           new URL a URI) to force a external redirection. If no
-          <em>code</em> is given, a HTTP response of 302 (FOUND, previously MOVED
+          <em>code</em> is given, an HTTP response of 302 (FOUND, previously MOVED
           TEMPORARILY) will be returned. If you want to use other response
           codes in the range 300-399, simply specify the appropriate number
           or use one of the following symbolic names:

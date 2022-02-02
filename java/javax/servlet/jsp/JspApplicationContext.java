@@ -25,7 +25,7 @@ import javax.el.ExpressionFactory;
  * Stores <i>application</i>-scoped information for the JSP container.
  * </p>
  *
- * @since 2.1
+ * @since JSP 2.1
  */
 public interface JspApplicationContext {
 
@@ -65,7 +65,7 @@ public interface JspApplicationContext {
      *             if called after the application's
      *             <code>ServletContextListeners</code> have been initialized.
      */
-    public void addELResolver(ELResolver resolver) throws IllegalStateException;
+    public void addELResolver(ELResolver resolver);
 
     /**
      * <p>

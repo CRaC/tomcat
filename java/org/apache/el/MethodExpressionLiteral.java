@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.el;
 
 import java.io.Externalizable;
@@ -95,7 +94,7 @@ public class MethodExpressionLiteral extends MethodExpression implements Externa
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         this.expr = in.readUTF();
         String type = in.readUTF();
-        if (!"".equals(type)) {
+        if (!type.isEmpty()) {
             this.expectedType = ReflectionUtil.forName(type);
         }
         this.paramTypes = ReflectionUtil.toTypeArray(((String[]) in

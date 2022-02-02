@@ -14,16 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Vector;
 
 import javax.el.MethodExpression;
 import javax.el.ValueExpression;
+import javax.servlet.jsp.tagext.JspFragment;
 import javax.servlet.jsp.tagext.TagAttributeInfo;
 import javax.servlet.jsp.tagext.TagFileInfo;
 import javax.servlet.jsp.tagext.TagInfo;
@@ -126,9 +127,9 @@ class TagFileProcessor {
 
         private static final String TAG_DYNAMIC = "the dynamic-attributes attribute of the tag directive";
 
-        private HashMap<String,NameEntry> nameTable = new HashMap<>();
+        private Map<String,NameEntry> nameTable = new HashMap<>();
 
-        private HashMap<String,NameEntry> nameFromTable = new HashMap<>();
+        private Map<String,NameEntry> nameFromTable = new HashMap<>();
 
         public TagFileDirectiveVisitor(Compiler compiler,
                 TagLibraryInfo tagLibInfo, String name, String path) {
@@ -251,7 +252,7 @@ class TagFileProcessor {
                 // type is fixed to "JspFragment" and a translation error
                 // must occur if specified.
                 if (type != null) {
-                    err.jspError(n, "jsp.error.fragmentwithtype");
+                    err.jspError(n, "jsp.error.fragmentwithtype", JspFragment.class.getName());
                 }
                 // rtexprvalue is fixed to "true" and a translation error
                 // must occur if specified.
@@ -260,8 +261,9 @@ class TagFileProcessor {
                     err.jspError(n, "jsp.error.frgmentwithrtexprvalue");
                 }
             } else {
-                if (type == null)
+                if (type == null) {
                     type = "java.lang.String";
+                }
 
                 if (deferredValue) {
                     type = ValueExpression.class.getName();
@@ -307,13 +309,15 @@ class TagFileProcessor {
             }
 
             String className = n.getAttributeValue("variable-class");
-            if (className == null)
+            if (className == null) {
                 className = "java.lang.String";
+            }
 
             String declareStr = n.getAttributeValue("declare");
             boolean declare = true;
-            if (declareStr != null)
+            if (declareStr != null) {
                 declare = JspUtil.booleanValue(declareStr);
+            }
 
             int scope = VariableInfo.NESTED;
             String scopeStr = n.getAttributeValue("scope");
@@ -421,7 +425,7 @@ class TagFileProcessor {
         private void checkUniqueName(String name, String type, Node n,
                 TagAttributeInfo attr) throws JasperException {
 
-            HashMap<String, NameEntry> table = (VAR_NAME_FROM.equals(type)) ? nameFromTable : nameTable;
+            Map<String, NameEntry> table = (VAR_NAME_FROM.equals(type)) ? nameFromTable : nameTable;
             NameEntry nameEntry = table.get(name);
             if (nameEntry != null) {
                 if (!TAG_DYNAMIC.equals(type) ||
@@ -599,7 +603,7 @@ class TagFileProcessor {
                                         entry.getValue());
                             }
                         }
-                    } catch (Exception e) {
+                    } catch (RuntimeException | ReflectiveOperationException e) {
                         // ignore errors
                     }
 

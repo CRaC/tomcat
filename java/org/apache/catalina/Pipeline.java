@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina;
 
 import java.util.Set;
@@ -38,11 +36,7 @@ import java.util.Set;
  * @author Craig R. McClanahan
  * @author Peter Donald
  */
-public interface Pipeline {
-
-
-    // ------------------------------------------------------------- Properties
-
+public interface Pipeline extends Contained {
 
     /**
      * @return the Valve instance that has been distinguished as the basic
@@ -64,9 +58,6 @@ public interface Pipeline {
      * @param valve Valve to be distinguished as the basic Valve
      */
     public void setBasic(Valve valve);
-
-
-    // --------------------------------------------------------- Public Methods
 
 
     /**
@@ -124,25 +115,12 @@ public interface Pipeline {
      */
     public Valve getFirst();
 
+
     /**
      * Returns true if all the valves in this pipeline support async, false otherwise
      * @return true if all the valves in this pipeline support async, false otherwise
      */
     public boolean isAsyncSupported();
-
-
-    /**
-     * @return the Container with which this Pipeline is associated.
-     */
-    public Container getContainer();
-
-
-    /**
-     * Set the Container with which this Pipeline is associated.
-     *
-     * @param container The new associated container
-     */
-    public void setContainer(Container container);
 
 
     /**

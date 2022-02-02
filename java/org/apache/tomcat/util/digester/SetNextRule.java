@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 import org.apache.tomcat.util.IntrospectionUtils;
@@ -153,15 +151,13 @@ public class SetNextRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("SetNextRule[");
         sb.append("methodName=");
         sb.append(methodName);
         sb.append(", paramType=");
         sb.append(paramType);
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 

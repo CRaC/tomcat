@@ -25,7 +25,8 @@ import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
- * Used to managed prioritisation.
+ * Base class for all streams including the connection (referred to as Stream 0)
+ * and is used primarily when managing prioritization.
  */
 abstract class AbstractStream {
 
@@ -33,29 +34,39 @@ abstract class AbstractStream {
     private static final StringManager sm = StringManager.getManager(AbstractStream.class);
 
     private final Integer identifier;
+    private final String idAsString;
 
     private volatile AbstractStream parentStream = null;
-    private final Set<Stream> childStreams =
-            Collections.newSetFromMap(new ConcurrentHashMap<Stream,Boolean>());
+    private final Set<AbstractNonZeroStream> childStreams =
+            Collections.newSetFromMap(new ConcurrentHashMap<AbstractNonZeroStream,Boolean>());
     private long windowSize = ConnectionSettingsBase.DEFAULT_INITIAL_WINDOW_SIZE;
 
+    private volatile int connectionAllocationRequested = 0;
+    private volatile int connectionAllocationMade = 0;
 
-    public AbstractStream(Integer identifier) {
+
+    AbstractStream(Integer identifier) {
         this.identifier = identifier;
+        this.idAsString = identifier.toString();
     }
 
 
-    public Integer getIdentifier() {
+    final Integer getIdentifier() {
         return identifier;
     }
 
 
-    public int getIdAsInt() {
+    final String getIdAsString() {
+        return idAsString;
+    }
+
+
+    final int getIdAsInt() {
         return identifier.intValue();
     }
 
 
-    void detachFromParent() {
+    final void detachFromParent() {
         if (parentStream != null) {
             parentStream.getChildStreams().remove(this);
             parentStream = null;
@@ -63,46 +74,44 @@ abstract class AbstractStream {
     }
 
 
-    final void addChild(Stream child) {
+    final void addChild(AbstractNonZeroStream child) {
         child.setParentStream(this);
         childStreams.add(child);
     }
 
 
-    boolean isDescendant(AbstractStream stream) {
-        if (childStreams.contains(stream)) {
-            return true;
+    final boolean isDescendant(AbstractStream stream) {
+        // Is the passed in Stream a descendant of this Stream?
+        // Start at the passed in Stream and work up
+        AbstractStream parent = stream.getParentStream();
+        while (parent != null && parent != this) {
+            parent = parent.getParentStream();
         }
-        for (AbstractStream child : childStreams) {
-            if (child.isDescendant(stream)) {
-                return true;
-            }
-        }
-        return false;
+        return parent != null;
     }
 
 
-    AbstractStream getParentStream() {
+    final AbstractStream getParentStream() {
         return parentStream;
     }
 
 
-    void setParentStream(AbstractStream parentStream) {
+    final void setParentStream(AbstractStream parentStream) {
         this.parentStream = parentStream;
     }
 
 
-    final Set<Stream> getChildStreams() {
+    final Set<AbstractNonZeroStream> getChildStreams() {
         return childStreams;
     }
 
 
-    protected synchronized void setWindowSize(long windowSize) {
+    final synchronized void setWindowSize(long windowSize) {
         this.windowSize = windowSize;
     }
 
 
-    protected synchronized long getWindowSize() {
+    final synchronized long getWindowSize() {
         return windowSize;
     }
 
@@ -113,7 +122,7 @@ abstract class AbstractStream {
      * @throws Http2Exception If the window size is now higher than
      *  the maximum allowed
      */
-    protected synchronized void incrementWindowSize(int increment) throws Http2Exception {
+    synchronized void incrementWindowSize(int increment) throws Http2Exception {
         // No need for overflow protection here.
         // Increment can't be more than Integer.MAX_VALUE and once windowSize
         // goes beyond 2^31-1 an error is triggered.
@@ -121,7 +130,7 @@ abstract class AbstractStream {
 
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("abstractStream.windowSizeInc", getConnectionId(),
-                    getIdentifier(), Integer.toString(increment), Long.toString(windowSize)));
+                    getIdAsString(), Integer.toString(increment), Long.toString(windowSize)));
         }
 
         if (windowSize > ConnectionSettingsBase.MAX_WINDOW_SIZE) {
@@ -137,22 +146,43 @@ abstract class AbstractStream {
     }
 
 
-    protected synchronized void decrementWindowSize(int decrement) {
+    final synchronized void decrementWindowSize(int decrement) {
         // No need for overflow protection here. Decrement can never be larger
         // the Integer.MAX_VALUE and once windowSize goes negative no further
         // decrements are permitted
         windowSize -= decrement;
         if (log.isDebugEnabled()) {
             log.debug(sm.getString("abstractStream.windowSizeDec", getConnectionId(),
-                    getIdentifier(), Integer.toString(decrement), Long.toString(windowSize)));
+                    getIdAsString(), Integer.toString(decrement), Long.toString(windowSize)));
         }
     }
 
 
-    protected abstract String getConnectionId();
+    final int getConnectionAllocationRequested() {
+        return connectionAllocationRequested;
+    }
 
-    protected abstract int getWeight();
 
-    @Deprecated // Unused
-    protected abstract void doNotifyAll();
+    final void setConnectionAllocationRequested(int connectionAllocationRequested) {
+        log.debug(sm.getString("abstractStream.setConnectionAllocationRequested", getConnectionId(), getIdAsString(),
+                Integer.toString(this.connectionAllocationRequested), Integer.toString(connectionAllocationRequested)));
+        this.connectionAllocationRequested = connectionAllocationRequested;
+    }
+
+
+    final int getConnectionAllocationMade() {
+        return connectionAllocationMade;
+    }
+
+
+    final void setConnectionAllocationMade(int connectionAllocationMade) {
+        log.debug(sm.getString("abstractStream.setConnectionAllocationMade", getConnectionId(), getIdAsString(),
+                Integer.toString(this.connectionAllocationMade), Integer.toString(connectionAllocationMade)));
+        this.connectionAllocationMade = connectionAllocationMade;
+    }
+
+
+    abstract String getConnectionId();
+
+    abstract int getWeight();
 }

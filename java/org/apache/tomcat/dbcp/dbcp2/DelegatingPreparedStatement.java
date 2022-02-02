@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2;
 
 import java.io.InputStream;
@@ -645,9 +644,8 @@ public class DelegatingPreparedStatement extends DelegatingStatement implements 
      *
      * @return String
      */
-    @SuppressWarnings("resource")
     @Override
-    public String toString() {
+    public synchronized String toString() {
         final Statement statement = getDelegate();
         return statement == null ? "NULL" : statement.toString();
     }

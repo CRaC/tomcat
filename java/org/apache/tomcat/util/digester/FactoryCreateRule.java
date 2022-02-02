@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 import org.xml.sax.Attributes;
@@ -168,14 +166,12 @@ public class FactoryCreateRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("FactoryCreateRule[");
         if (creationFactory != null) {
             sb.append("creationFactory=");
             sb.append(creationFactory);
         }
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 }

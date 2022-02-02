@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2.datasources;
 
 import java.sql.Connection;
@@ -32,6 +31,7 @@ import javax.sql.ConnectionPoolDataSource;
 import javax.sql.PooledConnection;
 
 import org.apache.tomcat.dbcp.dbcp2.Utils;
+import org.apache.tomcat.dbcp.pool2.DestroyMode;
 import org.apache.tomcat.dbcp.pool2.KeyedObjectPool;
 import org.apache.tomcat.dbcp.pool2.KeyedPooledObjectFactory;
 import org.apache.tomcat.dbcp.pool2.PooledObject;
@@ -59,8 +59,7 @@ class KeyedCPDSConnectionFactory implements KeyedPooledObjectFactory<UserPassKey
     /**
      * Map of PooledConnections for which close events are ignored. Connections are muted when they are being validated.
      */
-    private final Set<PooledConnection> validatingSet = Collections
-            .newSetFromMap(new ConcurrentHashMap<PooledConnection, Boolean>());
+    private final Set<PooledConnection> validatingSet = Collections.newSetFromMap(new ConcurrentHashMap<PooledConnection,Boolean>());
 
     /**
      * Map of PooledConnectionAndInfo instances
@@ -113,26 +112,24 @@ class KeyedCPDSConnectionFactory implements KeyedPooledObjectFactory<UserPassKey
      */
     @Override
     public synchronized PooledObject<PooledConnectionAndInfo> makeObject(final UserPassKey upkey) throws Exception {
-        PooledConnectionAndInfo pci = null;
-
-        PooledConnection pc = null;
-        final String userName = upkey.getUsername();
+        PooledConnection pooledConnection = null;
+        final String userName = upkey.getUserName();
         final String password = upkey.getPassword();
         if (userName == null) {
-            pc = cpds.getPooledConnection();
+            pooledConnection = cpds.getPooledConnection();
         } else {
-            pc = cpds.getPooledConnection(userName, password);
+            pooledConnection = cpds.getPooledConnection(userName, password);
         }
 
-        if (pc == null) {
+        if (pooledConnection == null) {
             throw new IllegalStateException("Connection pool data source returned null from getPooledConnection");
         }
 
         // should we add this object as a listener or the pool.
         // consider the validateObject method in decision
-        pc.addConnectionEventListener(this);
-        pci = new PooledConnectionAndInfo(pc, userName, upkey.getPasswordCharArray());
-        pcMap.put(pc, pci);
+        pooledConnection.addConnectionEventListener(this);
+        final PooledConnectionAndInfo pci = new PooledConnectionAndInfo(pooledConnection, userName, upkey.getPasswordCharArray());
+        pcMap.put(pooledConnection, pci);
 
         return new DefaultPooledObject<>(pci);
     }
@@ -142,10 +139,16 @@ class KeyedCPDSConnectionFactory implements KeyedPooledObjectFactory<UserPassKey
      */
     @Override
     public void destroyObject(final UserPassKey key, final PooledObject<PooledConnectionAndInfo> p) throws Exception {
-        final PooledConnection pc = p.getObject().getPooledConnection();
-        pc.removeConnectionEventListener(this);
-        pcMap.remove(pc);
-        pc.close();
+        final PooledConnection pooledConnection = p.getObject().getPooledConnection();
+        pooledConnection.removeConnectionEventListener(this);
+        pcMap.remove(pooledConnection);
+        pooledConnection.close();
+    }
+
+    @Override
+    public void destroyObject(UserPassKey key, PooledObject<PooledConnectionAndInfo> p,
+            DestroyMode mode) throws Exception {
+        destroyObject(key, p);
     }
 
     /**
@@ -194,11 +197,7 @@ class KeyedCPDSConnectionFactory implements KeyedPooledObjectFactory<UserPassKey
                 conn = pconn.getConnection();
                 stmt = conn.createStatement();
                 rset = stmt.executeQuery(validationQuery);
-                if (rset.next()) {
-                    valid = true;
-                } else {
-                    valid = false;
-                }
+                valid = rset.next();
                 if (rollbackAfterValidation) {
                     conn.rollback();
                 }
@@ -341,9 +340,9 @@ class KeyedCPDSConnectionFactory implements KeyedPooledObjectFactory<UserPassKey
 
     private void validateLifetime(final PooledObject<PooledConnectionAndInfo> p) throws Exception {
         if (maxConnLifetimeMillis > 0) {
-            final long lifetime = System.currentTimeMillis() - p.getCreateTime();
-            if (lifetime > maxConnLifetimeMillis) {
-                throw new Exception(Utils.getMessage("connectionFactory.lifetimeExceeded", Long.valueOf(lifetime),
+            final long lifetimeMillis = System.currentTimeMillis() - p.getCreateTime();
+            if (lifetimeMillis > maxConnLifetimeMillis) {
+                throw new Exception(Utils.getMessage("connectionFactory.lifetimeExceeded", Long.valueOf(lifetimeMillis),
                         Long.valueOf(maxConnLifetimeMillis)));
             }
         }

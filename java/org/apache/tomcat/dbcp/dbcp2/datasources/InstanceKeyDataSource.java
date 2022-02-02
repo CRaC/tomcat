@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2.datasources;
 
 import java.io.OutputStreamWriter;
@@ -24,7 +23,6 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
-import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -98,7 +96,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     /** Description */
     private String description;
 
-    /** Environment that may be used to set up a jndi initial context. */
+    /** Environment that may be used to set up a JNDI initial context. */
     private Properties jndiEnvironment;
 
     /** Login TimeOut in seconds */
@@ -139,13 +137,15 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     private Boolean defaultReadOnly;
 
     /**
-     * Default no-arg constructor for Serialization
+     * Default no-arg constructor for Serialization.
      */
     public InstanceKeyDataSource() {
     }
 
     /**
      * Throws an IllegalStateException, if a PooledConnection has already been requested.
+     *
+     * @throws IllegalStateException Thrown if a PooledConnection has already been requested.
      */
     protected void assertInitializationAllowed() throws IllegalStateException {
         if (getConnectionCalled) {
@@ -161,15 +161,18 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
 
     protected abstract PooledConnectionManager getConnectionManager(UserPassKey upkey);
 
-    /* JDBC_4_ANT_KEY_BEGIN */
     @Override
     public boolean isWrapperFor(final Class<?> iface) throws SQLException {
-        return false;
+        return iface.isInstance(this);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T unwrap(final Class<T> iface) throws SQLException {
-        throw new SQLException("InstanceKeyDataSource is not a wrapper.");
+        if (isWrapperFor(iface)) {
+            return (T) this;
+        }
+        throw new SQLException(this + " is not a wrapper for " + iface);
     }
     /* JDBC_4_ANT_KEY_END */
 
@@ -177,9 +180,6 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     public Logger getParentLogger() throws SQLFeatureNotSupportedException {
         throw new SQLFeatureNotSupportedException();
     }
-
-    // -------------------------------------------------------------------
-    // Properties
 
     /**
      * Gets the default value for {@link GenericKeyedObjectPoolConfig#getBlockWhenExhausted()} for each per user pool.
@@ -520,8 +520,8 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     }
 
     /**
-     * Gets the value of connectionPoolDataSource. This method will return null, if the backing datasource is being
-     * accessed via jndi.
+     * Gets the value of connectionPoolDataSource. This method will return null, if the backing data source is being
+     * accessed via JNDI.
      *
      * @return value of connectionPoolDataSource.
      */
@@ -530,27 +530,27 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     }
 
     /**
-     * Sets the backend ConnectionPoolDataSource. This property should not be set if using jndi to access the
-     * datasource.
+     * Sets the back end ConnectionPoolDataSource. This property should not be set if using JNDI to access the
+     * data source.
      *
-     * @param v
+     * @param dataSource
      *            Value to assign to connectionPoolDataSource.
      */
-    public void setConnectionPoolDataSource(final ConnectionPoolDataSource v) {
+    public void setConnectionPoolDataSource(final ConnectionPoolDataSource dataSource) {
         assertInitializationAllowed();
         if (dataSourceName != null) {
             throw new IllegalStateException("Cannot set the DataSource, if JNDI is used.");
         }
-        if (dataSource != null) {
+        if (this.dataSource != null) {
             throw new IllegalStateException("The CPDS has already been set. It cannot be altered.");
         }
-        dataSource = v;
+        this.dataSource = dataSource;
         instanceKey = InstanceKeyDataSourceFactory.registerNewInstance(this);
     }
 
     /**
-     * Gets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the datasource
-     * from a jndi service provider.
+     * Gets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the data source
+     * from a JNDI service provider.
      *
      * @return value of dataSourceName.
      */
@@ -559,22 +559,22 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     }
 
     /**
-     * Sets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the datasource
-     * from a jndi service provider.
+     * Sets the name of the ConnectionPoolDataSource which backs this pool. This name is used to look up the data source
+     * from a JNDI service provider.
      *
-     * @param v
+     * @param dataSourceName
      *            Value to assign to dataSourceName.
      */
-    public void setDataSourceName(final String v) {
+    public void setDataSourceName(final String dataSourceName) {
         assertInitializationAllowed();
         if (dataSource != null) {
             throw new IllegalStateException("Cannot set the JNDI name for the DataSource, if already "
                     + "set using setConnectionPoolDataSource.");
         }
-        if (dataSourceName != null) {
+        if (this.dataSourceName != null) {
             throw new IllegalStateException("The DataSourceName has already been set. " + "It cannot be altered.");
         }
-        this.dataSourceName = v;
+        this.dataSourceName = dataSourceName;
         instanceKey = InstanceKeyDataSourceFactory.registerNewInstance(this);
     }
 
@@ -594,12 +594,12 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
      * can be changed on the Connection using Connection.setAutoCommit(boolean). The default is <code>null</code> which
      * will use the default value for the drive.
      *
-     * @param v
+     * @param defaultAutoCommit
      *            Value to assign to defaultAutoCommit.
      */
-    public void setDefaultAutoCommit(final Boolean v) {
+    public void setDefaultAutoCommit(final Boolean defaultAutoCommit) {
         assertInitializationAllowed();
-        this.defaultAutoCommit = v;
+        this.defaultAutoCommit = defaultAutoCommit;
     }
 
     /**
@@ -618,12 +618,12 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
      * can be changed on the Connection using Connection.setReadOnly(boolean). The default is <code>null</code> which
      * will use the default value for the drive.
      *
-     * @param v
+     * @param defaultReadOnly
      *            Value to assign to defaultReadOnly.
      */
-    public void setDefaultReadOnly(final Boolean v) {
+    public void setDefaultReadOnly(final Boolean defaultReadOnly) {
         assertInitializationAllowed();
-        this.defaultReadOnly = v;
+        this.defaultReadOnly = defaultReadOnly;
     }
 
     /**
@@ -642,12 +642,12 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
      * The value can be changed on the Connection using Connection.setTransactionIsolation(int). The default is JDBC
      * driver dependent.
      *
-     * @param v
+     * @param defaultTransactionIsolation
      *            Value to assign to defaultTransactionIsolation
      */
-    public void setDefaultTransactionIsolation(final int v) {
+    public void setDefaultTransactionIsolation(final int defaultTransactionIsolation) {
         assertInitializationAllowed();
-        switch (v) {
+        switch (defaultTransactionIsolation) {
         case Connection.TRANSACTION_NONE:
         case Connection.TRANSACTION_READ_COMMITTED:
         case Connection.TRANSACTION_READ_UNCOMMITTED:
@@ -657,7 +657,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
         default:
             throw new IllegalArgumentException(BAD_TRANSACTION_ISOLATION);
         }
-        this.defaultTransactionIsolation = v;
+        this.defaultTransactionIsolation = defaultTransactionIsolation;
     }
 
     /**
@@ -674,11 +674,11 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
      * Sets the description. This property is defined by JDBC as for use with GUI (or other) tools that might deploy the
      * datasource. It serves no internal purpose.
      *
-     * @param v
+     * @param description
      *            Value to assign to description.
      */
-    public void setDescription(final String v) {
-        this.description = v;
+    public void setDescription(final String description) {
+        this.description = description;
     }
 
     protected String getInstanceKey() {
@@ -687,7 +687,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
 
     /**
      * Gets the value of jndiEnvironment which is used when instantiating a JNDI InitialContext. This InitialContext is
-     * used to locate the backend ConnectionPoolDataSource.
+     * used to locate the back end ConnectionPoolDataSource.
      *
      * @param key
      *            JNDI environment key.
@@ -703,7 +703,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
 
     /**
      * Sets the value of the given JNDI environment property to be used when instantiating a JNDI InitialContext. This
-     * InitialContext is used to locate the backend ConnectionPoolDataSource.
+     * InitialContext is used to locate the back end ConnectionPoolDataSource.
      *
      * @param key
      *            the JNDI environment property to set.
@@ -719,7 +719,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
 
     /**
      * Sets the JNDI environment to be used when instantiating a JNDI InitialContext. This InitialContext is used to
-     * locate the backend ConnectionPoolDataSource.
+     * locate the back end ConnectionPoolDataSource.
      *
      * @param properties
      *            the JNDI environment property to set which will overwrite any current settings
@@ -746,12 +746,12 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     /**
      * Sets the value of loginTimeout.
      *
-     * @param v
+     * @param loginTimeout
      *            Value to assign to loginTimeout.
      */
     @Override
-    public void setLoginTimeout(final int v) {
-        this.loginTimeout = v;
+    public void setLoginTimeout(final int loginTimeout) {
+        this.loginTimeout = loginTimeout;
     }
 
     /**
@@ -770,12 +770,12 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
     /**
      * Sets the value of logWriter.
      *
-     * @param v
+     * @param logWriter
      *            Value to assign to logWriter.
      */
     @Override
-    public void setLogWriter(final PrintWriter v) {
-        this.logWriter = v;
+    public void setLogWriter(final PrintWriter logWriter) {
+        this.logWriter = logWriter;
     }
 
     /**
@@ -876,12 +876,6 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
         this.maxConnLifetimeMillis = maxConnLifetimeMillis;
     }
 
-    // ----------------------------------------------------------------------
-    // Instrumentation Methods
-
-    // ----------------------------------------------------------------------
-    // DataSource implementation
-
     /**
      * Attempts to establish a database connection.
      */
@@ -911,13 +905,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
         PooledConnectionAndInfo info = null;
         try {
             info = getPooledConnectionAndInfo(userName, userPassword);
-        } catch (final NoSuchElementException e) {
-            closeDueToException(info);
-            throw new SQLException("Cannot borrow connection from pool", e);
-        } catch (final RuntimeException e) {
-            closeDueToException(info);
-            throw e;
-        } catch (final SQLException e) {
+        } catch (final RuntimeException | SQLException e) {
             closeDueToException(info);
             throw e;
         } catch (final Exception e) {
@@ -951,13 +939,7 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
             for (int i = 0; i < 10; i++) { // Bound the number of retries - only needed if bad instances return
                 try {
                     info = getPooledConnectionAndInfo(userName, userPassword);
-                } catch (final NoSuchElementException e) {
-                    closeDueToException(info);
-                    throw new SQLException("Cannot borrow connection from pool", e);
-                } catch (final RuntimeException e) {
-                    closeDueToException(info);
-                    throw e;
-                } catch (final SQLException e) {
+                } catch (final RuntimeException | SQLException e) {
                     closeDueToException(info);
                     throw e;
                 } catch (final Exception e) {
@@ -1023,12 +1005,11 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
                 ctx = new InitialContext(jndiEnvironment);
             }
             final Object ds = ctx.lookup(dataSourceName);
-            if (ds instanceof ConnectionPoolDataSource) {
-                cpds = (ConnectionPoolDataSource) ds;
-            } else {
+            if (!(ds instanceof ConnectionPoolDataSource)) {
                 throw new SQLException("Illegal configuration: " + "DataSource " + dataSourceName + " ("
                         + ds.getClass().getName() + ")" + " doesn't implement javax.sql.ConnectionPoolDataSource");
             }
+            cpds = (ConnectionPoolDataSource) ds;
         }
 
         // try to get a connection with the supplied userName/password
@@ -1052,5 +1033,80 @@ public abstract class InstanceKeyDataSource implements DataSource, Referenceable
             }
         }
         return cpds;
+    }
+
+    /**
+     * @since 2.6.0
+     */
+    @Override
+    public synchronized String toString() {
+        final StringBuilder builder = new StringBuilder(super.toString());
+        builder.append('[');
+        toStringFields(builder);
+        builder.append(']');
+        return builder.toString();
+    }
+
+    protected void toStringFields(final StringBuilder builder) {
+        builder.append("getConnectionCalled=");
+        builder.append(getConnectionCalled);
+        builder.append(", dataSource=");
+        builder.append(dataSource);
+        builder.append(", dataSourceName=");
+        builder.append(dataSourceName);
+        builder.append(", description=");
+        builder.append(description);
+        builder.append(", jndiEnvironment=");
+        builder.append(jndiEnvironment);
+        builder.append(", loginTimeout=");
+        builder.append(loginTimeout);
+        builder.append(", logWriter=");
+        builder.append(logWriter);
+        builder.append(", instanceKey=");
+        builder.append(instanceKey);
+        builder.append(", defaultBlockWhenExhausted=");
+        builder.append(defaultBlockWhenExhausted);
+        builder.append(", defaultEvictionPolicyClassName=");
+        builder.append(defaultEvictionPolicyClassName);
+        builder.append(", defaultLifo=");
+        builder.append(defaultLifo);
+        builder.append(", defaultMaxIdle=");
+        builder.append(defaultMaxIdle);
+        builder.append(", defaultMaxTotal=");
+        builder.append(defaultMaxTotal);
+        builder.append(", defaultMaxWaitMillis=");
+        builder.append(defaultMaxWaitMillis);
+        builder.append(", defaultMinEvictableIdleTimeMillis=");
+        builder.append(defaultMinEvictableIdleTimeMillis);
+        builder.append(", defaultMinIdle=");
+        builder.append(defaultMinIdle);
+        builder.append(", defaultNumTestsPerEvictionRun=");
+        builder.append(defaultNumTestsPerEvictionRun);
+        builder.append(", defaultSoftMinEvictableIdleTimeMillis=");
+        builder.append(defaultSoftMinEvictableIdleTimeMillis);
+        builder.append(", defaultTestOnCreate=");
+        builder.append(defaultTestOnCreate);
+        builder.append(", defaultTestOnBorrow=");
+        builder.append(defaultTestOnBorrow);
+        builder.append(", defaultTestOnReturn=");
+        builder.append(defaultTestOnReturn);
+        builder.append(", defaultTestWhileIdle=");
+        builder.append(defaultTestWhileIdle);
+        builder.append(", defaultTimeBetweenEvictionRunsMillis=");
+        builder.append(defaultTimeBetweenEvictionRunsMillis);
+        builder.append(", validationQuery=");
+        builder.append(validationQuery);
+        builder.append(", validationQueryTimeoutSeconds=");
+        builder.append(validationQueryTimeoutSeconds);
+        builder.append(", rollbackAfterValidation=");
+        builder.append(rollbackAfterValidation);
+        builder.append(", maxConnLifetimeMillis=");
+        builder.append(maxConnLifetimeMillis);
+        builder.append(", defaultAutoCommit=");
+        builder.append(defaultAutoCommit);
+        builder.append(", defaultTransactionIsolation=");
+        builder.append(defaultTransactionIsolation);
+        builder.append(", defaultReadOnly=");
+        builder.append(defaultReadOnly);
     }
 }

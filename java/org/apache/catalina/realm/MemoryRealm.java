@@ -119,8 +119,9 @@ public class MemoryRealm  extends RealmBase {
         // No user or no credentials
         // Can't possibly authenticate, don't bother the database then
         if (username == null || credentials == null) {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug(sm.getString("memoryRealm.authenticateFailure", username));
+            }
             return null;
         }
 
@@ -131,20 +132,23 @@ public class MemoryRealm  extends RealmBase {
             // Waste a bit of time as not to reveal that the user does not exist.
             getCredentialHandler().mutate(credentials);
 
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug(sm.getString("memoryRealm.authenticateFailure", username));
+            }
             return null;
         }
 
         boolean validated = getCredentialHandler().matches(credentials, principal.getPassword());
 
         if (validated) {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug(sm.getString("memoryRealm.authenticateSuccess", username));
+            }
             return principal;
         } else {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug(sm.getString("memoryRealm.authenticateFailure", username));
+            }
             return null;
         }
     }
@@ -167,8 +171,9 @@ public class MemoryRealm  extends RealmBase {
         roles += ",";
         while (true) {
             int comma = roles.indexOf(',');
-            if (comma < 0)
+            if (comma < 0) {
                 break;
+            }
             String role = roles.substring(0, comma).trim();
             list.add(role);
             roles = roles.substring(comma + 1);
@@ -190,7 +195,6 @@ public class MemoryRealm  extends RealmBase {
      * the XML input file, creating a new one if necessary.
      */
     protected synchronized Digester getDigester() {
-
         if (digester == null) {
             digester = new Digester();
             digester.setValidating(false);
@@ -203,8 +207,7 @@ public class MemoryRealm  extends RealmBase {
             }
             digester.addRuleSet(new MemoryRuleSet());
         }
-        return (digester);
-
+        return digester;
     }
 
 
@@ -223,9 +226,9 @@ public class MemoryRealm  extends RealmBase {
 
         GenericPrincipal principal = principals.get(username);
         if (principal != null) {
-            return (principal.getPassword());
+            return principal.getPassword();
         } else {
-            return (null);
+            return null;
         }
 
     }

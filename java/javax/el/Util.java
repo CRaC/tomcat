@@ -199,7 +199,7 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    static Method findMethod(Class<?> clazz, String methodName,
+    static Method findMethod(Class<?> clazz, Object base, String methodName,
             Class<?>[] paramTypes, Object[] paramValues) {
 
         if (clazz == null || methodName == null) {
@@ -214,11 +214,11 @@ class Util {
 
         Method[] methods = clazz.getMethods();
 
-        List<Wrapper> wrappers = Wrapper.wrap(methods, methodName);
+        List<Wrapper<Method>> wrappers = Wrapper.wrap(methods, methodName);
 
-        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper<Method> result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        return getMethod(clazz, (Method) result.unWrap());
+        return getMethod(clazz, base, result.unWrap());
     }
 
     /*
@@ -226,14 +226,14 @@ class Util {
      * making changes keep the code in sync.
      */
     @SuppressWarnings("null")
-    private static Wrapper findWrapper(Class<?> clazz, List<Wrapper> wrappers,
+    private static <T> Wrapper<T> findWrapper(Class<?> clazz, List<Wrapper<T>> wrappers,
             String name, Class<?>[] paramTypes, Object[] paramValues) {
 
-        Map<Wrapper,MatchResult> candidates = new HashMap<>();
+        Map<Wrapper<T>,MatchResult> candidates = new HashMap<>();
 
         int paramCount = paramTypes.length;
 
-        for (Wrapper w : wrappers) {
+        for (Wrapper<T> w : wrappers) {
             Class<?>[] mParamTypes = w.getParameterTypes();
             int mParamCount;
             if (mParamTypes == null) {
@@ -271,19 +271,22 @@ class Util {
             int exactMatch = 0;
             int assignableMatch = 0;
             int coercibleMatch = 0;
+            int varArgsMatch = 0;
             boolean noMatch = false;
             for (int i = 0; i < mParamCount; i++) {
                 // Can't be null
                 if (w.isVarArgs() && i == (mParamCount - 1)) {
                     if (i == paramCount || (paramValues != null && paramValues.length == i)) {
-                        // Nothing is passed as varargs
-                        assignableMatch++;
+                        // Var args defined but nothing is passed as varargs
+                        // Use MAX_VALUE so this matches only if nothing else does
+                        varArgsMatch = Integer.MAX_VALUE;
                         break;
                     }
                     Class<?> varType = mParamTypes[i].getComponentType();
                     for (int j = i; j < paramCount; j++) {
                         if (isAssignableFrom(paramTypes[j], varType)) {
                             assignableMatch++;
+                            varArgsMatch++;
                         } else {
                             if (paramValues == null) {
                                 noMatch = true;
@@ -291,6 +294,7 @@ class Util {
                             } else {
                                 if (isCoercibleFrom(paramValues[j], varType)) {
                                     coercibleMatch++;
+                                    varArgsMatch++;
                                 } else {
                                     noMatch = true;
                                     break;
@@ -326,21 +330,21 @@ class Util {
             }
 
             // If a method is found where every parameter matches exactly,
-            // return it
-            if (exactMatch == paramCount) {
+            // and no vars args are present, return it
+            if (exactMatch == paramCount && varArgsMatch == 0) {
                 return w;
             }
 
             candidates.put(w, new MatchResult(
-                    exactMatch, assignableMatch, coercibleMatch, w.isBridge()));
+                    w.isVarArgs(), exactMatch, assignableMatch, coercibleMatch, varArgsMatch, w.isBridge()));
         }
 
         // Look for the method that has the highest number of parameters where
         // the type matches exactly
-        MatchResult bestMatch = new MatchResult(0, 0, 0, false);
-        Wrapper match = null;
+        MatchResult bestMatch = new MatchResult(true, 0, 0, 0, 0, true);
+        Wrapper<T> match = null;
         boolean multiple = false;
-        for (Map.Entry<Wrapper, MatchResult> entry : candidates.entrySet()) {
+        for (Map.Entry<Wrapper<T>, MatchResult> entry : candidates.entrySet()) {
             int cmp = entry.getValue().compareTo(bestMatch);
             if (cmp > 0 || match == null) {
                 bestMatch = entry.getValue();
@@ -351,7 +355,7 @@ class Util {
             }
         }
         if (multiple) {
-            if (bestMatch.getExact() == paramCount - 1) {
+            if (bestMatch.getExactCount() == paramCount - 1) {
                 // Only one parameter is not an exact match - try using the
                 // super class
                 match = resolveAmbiguousWrapper(candidates.keySet(), paramTypes);
@@ -365,7 +369,7 @@ class Util {
                 throw new MethodNotFoundException(message(
                         null, "util.method.ambiguous", clazz, name,
                         paramString(paramTypes)));
-                }
+            }
         }
 
         // Handle case where no match at all was found
@@ -382,11 +386,11 @@ class Util {
     private static final String paramString(Class<?>[] types) {
         if (types != null) {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < types.length; i++) {
-                if (types[i] == null) {
+            for (Class<?> type : types) {
+                if (type == null) {
                     sb.append("null, ");
                 } else {
-                    sb.append(types[i].getName()).append(", ");
+                    sb.append(type.getName()).append(", ");
                 }
             }
             if (sb.length() > 2) {
@@ -402,10 +406,10 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    private static Wrapper resolveAmbiguousWrapper(Set<Wrapper> candidates,
+    private static <T> Wrapper<T> resolveAmbiguousWrapper(Set<Wrapper<T>> candidates,
             Class<?>[] paramTypes) {
         // Identify which parameter isn't an exact match
-        Wrapper w = candidates.iterator().next();
+        Wrapper<T> w = candidates.iterator().next();
 
         int nonMatchIndex = 0;
         Class<?> nonMatchClass = null;
@@ -423,19 +427,18 @@ class Util {
             return null;
         }
 
-        for (Wrapper c : candidates) {
-           if (c.getParameterTypes()[nonMatchIndex] ==
-                   paramTypes[nonMatchIndex]) {
-               // Methods have different non-matching parameters
-               // Result is ambiguous
-               return null;
-           }
+        for (Wrapper<T> c : candidates) {
+            if (c.getParameterTypes()[nonMatchIndex] == paramTypes[nonMatchIndex]) {
+                // Methods have different non-matching parameters
+                // Result is ambiguous
+                return null;
+            }
         }
 
         // Can't be null
         Class<?> superClass = nonMatchClass.getSuperclass();
         while (superClass != null) {
-            for (Wrapper c : candidates) {
+            for (Wrapper<T> c : candidates) {
                 if (c.getParameterTypes()[nonMatchIndex].equals(superClass)) {
                     // Found a match
                     return c;
@@ -445,9 +448,9 @@ class Util {
         }
 
         // Treat instances of Number as a special case
-        Wrapper match = null;
+        Wrapper<T> match = null;
         if (Number.class.isAssignableFrom(nonMatchClass)) {
-            for (Wrapper c : candidates) {
+            for (Wrapper<T> c : candidates) {
                 Class<?> candidateType = c.getParameterTypes()[nonMatchIndex];
                 if (Number.class.isAssignableFrom(candidateType) ||
                         candidateType.isPrimitive()) {
@@ -541,16 +544,21 @@ class Util {
      * This method duplicates code in org.apache.el.util.ReflectionUtil. When
      * making changes keep the code in sync.
      */
-    static Method getMethod(Class<?> type, Method m) {
-        if (m == null || Modifier.isPublic(type.getModifiers())) {
+    static Method getMethod(Class<?> type, Object base, Method m) {
+        JreCompat jreCompat = JreCompat.getInstance();
+        // If base is null, method MUST be static
+        // If base is non-null, method may be static or non-static
+        if (m == null ||
+                (Modifier.isPublic(type.getModifiers()) &&
+                        (jreCompat.canAccess(base, m) || base != null && jreCompat.canAccess(null, m)))) {
             return m;
         }
-        Class<?>[] inf = type.getInterfaces();
+        Class<?>[] interfaces = type.getInterfaces();
         Method mp = null;
-        for (int i = 0; i < inf.length; i++) {
+        for (Class<?> iface : interfaces) {
             try {
-                mp = inf[i].getMethod(m.getName(), m.getParameterTypes());
-                mp = getMethod(mp.getDeclaringClass(), mp);
+                mp = iface.getMethod(m.getName(), m.getParameterTypes());
+                mp = getMethod(mp.getDeclaringClass(), base, mp);
                 if (mp != null) {
                     return mp;
                 }
@@ -562,7 +570,7 @@ class Util {
         if (sup != null) {
             try {
                 mp = sup.getMethod(m.getName(), m.getParameterTypes());
-                mp = getMethod(mp.getDeclaringClass(), mp);
+                mp = getMethod(mp.getDeclaringClass(), base, mp);
                 if (mp != null) {
                     return mp;
                 }
@@ -591,32 +599,20 @@ class Util {
 
         Constructor<?>[] constructors = clazz.getConstructors();
 
-        List<Wrapper> wrappers = Wrapper.wrap(constructors);
+        List<Wrapper<Constructor<?>>> wrappers = Wrapper.wrap(constructors);
 
-        Wrapper result = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
+        Wrapper<Constructor<?>> wrapper = findWrapper(clazz, wrappers, methodName, paramTypes, paramValues);
 
-        return getConstructor(clazz, (Constructor<?>) result.unWrap());
-    }
+        Constructor<?> constructor = wrapper.unWrap();
 
-
-    static Constructor<?> getConstructor(Class<?> type, Constructor<?> c) {
-        if (c == null || Modifier.isPublic(type.getModifiers())) {
-            return c;
+        JreCompat jreCompat = JreCompat.getInstance();
+        if (!Modifier.isPublic(clazz.getModifiers()) || !jreCompat.canAccess(null, constructor)) {
+            throw new MethodNotFoundException(message(
+                    null, "util.method.notfound", clazz, methodName,
+                    paramString(paramTypes)));
         }
-        Constructor<?> cp = null;
-        Class<?> sup = type.getSuperclass();
-        if (sup != null) {
-            try {
-                cp = sup.getConstructor(c.getParameterTypes());
-                cp = getConstructor(cp.getDeclaringClass(), cp);
-                if (cp != null) {
-                    return cp;
-                }
-            } catch (NoSuchMethodException e) {
-                // Ignore
-            }
-        }
-        return null;
+
+        return constructor;
     }
 
 
@@ -639,11 +635,8 @@ class Util {
                             parameterTypes[i]);
                 }
                 // Last parameter is the varargs
-                Class<?> varArgClass =
-                    parameterTypes[varArgIndex].getComponentType();
-                final Object varargs = Array.newInstance(
-                    varArgClass,
-                    (paramCount - varArgIndex));
+                Class<?> varArgClass = parameterTypes[varArgIndex].getComponentType();
+                final Object varargs = Array.newInstance(varArgClass, (paramCount - varArgIndex));
                 for (int i = (varArgIndex); i < paramCount; i++) {
                     Array.set(varargs, i - varArgIndex,
                             factory.coerceToType(params[i], varArgClass));
@@ -674,10 +667,10 @@ class Util {
     }
 
 
-    private abstract static class Wrapper {
+    private abstract static class Wrapper<T> {
 
-        public static List<Wrapper> wrap(Method[] methods, String name) {
-            List<Wrapper> result = new ArrayList<>();
+        public static List<Wrapper<Method>> wrap(Method[] methods, String name) {
+            List<Wrapper<Method>> result = new ArrayList<>();
             for (Method method : methods) {
                 if (method.getName().equals(name)) {
                     result.add(new MethodWrapper(method));
@@ -686,22 +679,22 @@ class Util {
             return result;
         }
 
-        public static List<Wrapper> wrap(Constructor<?>[] constructors) {
-            List<Wrapper> result = new ArrayList<>();
+        public static List<Wrapper<Constructor<?>>> wrap(Constructor<?>[] constructors) {
+            List<Wrapper<Constructor<?>>> result = new ArrayList<>();
             for (Constructor<?> constructor : constructors) {
                 result.add(new ConstructorWrapper(constructor));
             }
             return result;
         }
 
-        public abstract Object unWrap();
+        public abstract T unWrap();
         public abstract Class<?>[] getParameterTypes();
         public abstract boolean isVarArgs();
         public abstract boolean isBridge();
     }
 
 
-    private static class MethodWrapper extends Wrapper {
+    private static class MethodWrapper extends Wrapper<Method> {
         private final Method m;
 
         public MethodWrapper(Method m) {
@@ -709,7 +702,7 @@ class Util {
         }
 
         @Override
-        public Object unWrap() {
+        public Method unWrap() {
             return m;
         }
 
@@ -729,7 +722,7 @@ class Util {
         }
     }
 
-    private static class ConstructorWrapper extends Wrapper {
+    private static class ConstructorWrapper extends Wrapper<Constructor<?>> {
         private final Constructor<?> c;
 
         public ConstructorWrapper(Constructor<?> c) {
@@ -737,7 +730,7 @@ class Util {
         }
 
         @Override
-        public Object unWrap() {
+        public Constructor<?> unWrap() {
             return c;
         }
 
@@ -763,28 +756,41 @@ class Util {
      */
     private static class MatchResult implements Comparable<MatchResult> {
 
-        private final int exact;
-        private final int assignable;
-        private final int coercible;
+        private final boolean varArgs;
+        private final int exactCount;
+        private final int assignableCount;
+        private final int coercibleCount;
+        private final int varArgsCount;
         private final boolean bridge;
 
-        public MatchResult(int exact, int assignable, int coercible, boolean bridge) {
-            this.exact = exact;
-            this.assignable = assignable;
-            this.coercible = coercible;
+        public MatchResult(boolean varArgs, int exactCount, int assignableCount, int coercibleCount, int varArgsCount,
+                boolean bridge) {
+            this.varArgs = varArgs;
+            this.exactCount = exactCount;
+            this.assignableCount = assignableCount;
+            this.coercibleCount = coercibleCount;
+            this.varArgsCount = varArgsCount;
             this.bridge = bridge;
         }
 
-        public int getExact() {
-            return exact;
+        public boolean isVarArgs() {
+            return varArgs;
         }
 
-        public int getAssignable() {
-            return assignable;
+        public int getExactCount() {
+            return exactCount;
         }
 
-        public int getCoercible() {
-            return coercible;
+        public int getAssignableCount() {
+            return assignableCount;
+        }
+
+        public int getCoercibleCount() {
+            return coercibleCount;
+        }
+
+        public int getVarArgsCount() {
+            return varArgsCount;
         }
 
         public boolean isBridge() {
@@ -793,21 +799,54 @@ class Util {
 
         @Override
         public int compareTo(MatchResult o) {
-            int cmp = Integer.compare(this.getExact(), o.getExact());
+            // Non-varArgs always beats varArgs
+            int cmp = Boolean.compare(o.isVarArgs(), this.isVarArgs());
             if (cmp == 0) {
-                cmp = Integer.compare(this.getAssignable(), o.getAssignable());
+                cmp = Integer.compare(this.getExactCount(), o.getExactCount());
                 if (cmp == 0) {
-                    cmp = Integer.compare(this.getCoercible(), o.getCoercible());
+                    cmp = Integer.compare(this.getAssignableCount(), o.getAssignableCount());
                     if (cmp == 0) {
-                        // The nature of bridge methods is such that it actually
-                        // doesn't matter which one we pick as long as we pick
-                        // one. That said, pick the 'right' one (the non-bridge
-                        // one) anyway.
-                        cmp = Boolean.compare(o.isBridge(), this.isBridge());
+                        cmp = Integer.compare(this.getCoercibleCount(), o.getCoercibleCount());
+                        if (cmp == 0) {
+                            // Fewer var args matches are better
+                            cmp = Integer.compare(o.getVarArgsCount(), this.getVarArgsCount());
+                            if (cmp == 0) {
+                                // The nature of bridge methods is such that it actually
+                                // doesn't matter which one we pick as long as we pick
+                                // one. That said, pick the 'right' one (the non-bridge
+                                // one) anyway.
+                                cmp = Boolean.compare(o.isBridge(), this.isBridge());
+                            }
+                        }
                     }
                 }
             }
             return cmp;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o == this || (null != o &&
+                    this.getClass().equals(o.getClass()) &&
+                    ((MatchResult)o).getExactCount() == this.getExactCount() &&
+                    ((MatchResult)o).getAssignableCount() == this.getAssignableCount() &&
+                    ((MatchResult)o).getCoercibleCount() == this.getCoercibleCount() &&
+                    ((MatchResult)o).getVarArgsCount() == this.getVarArgsCount() &&
+                    ((MatchResult)o).isVarArgs() == this.isVarArgs() &&
+                    ((MatchResult)o).isBridge() == this.isBridge());
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = 1;
+            result = prime * result + assignableCount;
+            result = prime * result + (bridge ? 1231 : 1237);
+            result = prime * result + coercibleCount;
+            result = prime * result + exactCount;
+            result = prime * result + (varArgs ? 1231 : 1237);
+            result = prime * result + varArgsCount;
+            return result;
         }
     }
 

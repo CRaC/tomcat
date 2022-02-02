@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import javax.servlet.SessionCookieConfig;
@@ -30,8 +29,7 @@ public class ApplicationSessionCookieConfig implements SessionCookieConfig {
     /**
      * The string manager for this package.
      */
-    private static final StringManager sm = StringManager
-            .getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(ApplicationSessionCookieConfig.class);
 
     private boolean httpOnly;
     private boolean secure;

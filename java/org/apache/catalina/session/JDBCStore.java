@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.session;
 
 import java.io.BufferedInputStream;
@@ -52,7 +51,10 @@ import org.apache.tomcat.util.ExceptionUtils;
  * based on inactivity.
  *
  * @author Bip Thelin
+ * @deprecated Removed in Tomcat 10 and replaced by DataSourceStore
+ *  with removal of legacy JDBC code
  */
+@Deprecated
 public class JDBCStore extends StoreBase {
 
     /**
@@ -444,7 +446,7 @@ public class JDBCStore extends StoreBase {
      * @param dataSourceName The JNDI name of the DataSource-factory
      */
     public void setDataSourceName(String dataSourceName) {
-        if (dataSourceName == null || "".equals(dataSourceName.trim())) {
+        if (dataSourceName == null || dataSourceName.trim().isEmpty()) {
             manager.getContext().getLogger().warn(
                     sm.getString(getStoreName() + ".missingDataSourceName"));
             return;
@@ -530,7 +532,7 @@ public class JDBCStore extends StoreBase {
                                     tmpkeys.add(rst.getString(1));
                                 }
                             }
-                            keys = tmpkeys.toArray(new String[tmpkeys.size()]);
+                            keys = tmpkeys.toArray(new String[0]);
                             // Break out after the finally block
                             numberOfTries = 0;
                         }
@@ -539,8 +541,9 @@ public class JDBCStore extends StoreBase {
                     manager.getContext().getLogger().error(sm.getString(getStoreName() + ".SQLException", e));
                     keys = new String[0];
                     // Close the connection so that it gets reopened next time
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } finally {
                     release(_conn);
                 }
@@ -590,8 +593,9 @@ public class JDBCStore extends StoreBase {
                     }
                 } catch (SQLException e) {
                     manager.getContext().getLogger().error(sm.getString(getStoreName() + ".SQLException", e));
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } finally {
                     release(_conn);
                 }
@@ -658,8 +662,9 @@ public class JDBCStore extends StoreBase {
                     }
                 } catch (SQLException e) {
                     contextLog.error(sm.getString(getStoreName() + ".SQLException", e));
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } finally {
                     context.unbind(Globals.IS_SECURITY_ENABLED, oldThreadContextCL);
                     release(_conn);
@@ -698,8 +703,9 @@ public class JDBCStore extends StoreBase {
                     numberOfTries = 0;
                 } catch (SQLException e) {
                     manager.getContext().getLogger().error(sm.getString(getStoreName() + ".SQLException", e));
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } finally {
                     release(_conn);
                 }
@@ -763,8 +769,9 @@ public class JDBCStore extends StoreBase {
                     numberOfTries = 0;
                 } catch (SQLException e) {
                     manager.getContext().getLogger().error(sm.getString(getStoreName() + ".SQLException", e));
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } finally {
                     release(_conn);
                 }
@@ -828,8 +835,9 @@ public class JDBCStore extends StoreBase {
                     }
                 } catch (SQLException e) {
                     manager.getContext().getLogger().error(sm.getString(getStoreName() + ".SQLException", e));
-                    if (dbConnection != null)
+                    if (dbConnection != null) {
                         close(dbConnection);
+                    }
                 } catch (IOException e) {
                     // Ignore
                 } finally {
@@ -885,8 +893,9 @@ public class JDBCStore extends StoreBase {
     protected Connection open() throws SQLException {
 
         // Do nothing if there is a database connection already open
-        if (dbConnection != null)
+        if (dbConnection != null) {
             return dbConnection;
+        }
 
         if (dataSourceName != null && dataSource == null) {
             org.apache.catalina.Context context = getManager().getContext();
@@ -930,11 +939,16 @@ public class JDBCStore extends StoreBase {
 
         // Open a new connection
         Properties props = new Properties();
-        if (connectionName != null)
+        if (connectionName != null) {
             props.put("user", connectionName);
-        if (connectionPassword != null)
+        }
+        if (connectionPassword != null) {
             props.put("password", connectionPassword);
+        }
         dbConnection = driver.connect(connectionURL, props);
+        if (dbConnection == null) {
+            throw new SQLException(sm.getString(getStoreName() + ".connectError", connectionURL));
+        }
         dbConnection.setAutoCommit(true);
         return dbConnection;
 
@@ -948,8 +962,9 @@ public class JDBCStore extends StoreBase {
     protected void close(Connection dbConnection) {
 
         // Do nothing if the database connection is already closed
-        if (dbConnection == null)
+        if (dbConnection == null) {
             return;
+        }
 
         // Close our prepared statements (if any)
         try {

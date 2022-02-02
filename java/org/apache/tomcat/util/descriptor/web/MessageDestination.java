@@ -38,7 +38,7 @@ public class MessageDestination extends ResourceBase {
     private String displayName = null;
 
     public String getDisplayName() {
-        return (this.displayName);
+        return this.displayName;
     }
 
     public void setDisplayName(String displayName) {
@@ -52,7 +52,7 @@ public class MessageDestination extends ResourceBase {
     private String largeIcon = null;
 
     public String getLargeIcon() {
-        return (this.largeIcon);
+        return this.largeIcon;
     }
 
     public void setLargeIcon(String largeIcon) {
@@ -66,7 +66,7 @@ public class MessageDestination extends ResourceBase {
     private String smallIcon = null;
 
     public String getSmallIcon() {
-        return (this.smallIcon);
+        return this.smallIcon;
     }
 
     public void setSmallIcon(String smallIcon) {
@@ -82,7 +82,6 @@ public class MessageDestination extends ResourceBase {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("MessageDestination[");
         sb.append("name=");
         sb.append(getName());
@@ -102,8 +101,8 @@ public class MessageDestination extends ResourceBase {
             sb.append(", description=");
             sb.append(getDescription());
         }
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 

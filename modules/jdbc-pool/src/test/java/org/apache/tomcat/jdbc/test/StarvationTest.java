@@ -80,8 +80,11 @@ public class StarvationTest extends DefaultTestCase {
         }catch (Exception x) {
             Assert.assertFalse("Connection got starved:"+x.getMessage(),true);
         }finally {
-            if (con2!=null) con2.close();
+            if (con2!=null) {
+              con2.close();
+            }
         }
+        con1.close();
     }
 
     @Test
@@ -102,7 +105,10 @@ public class StarvationTest extends DefaultTestCase {
         }catch (Exception x) {
             Assert.assertFalse("Connection got starved:"+x.getMessage(),true);
         }finally {
-            if (con2!=null) con2.close();
+            if (con2!=null) {
+              con2.close();
+            }
         }
+        con1.close();
     }
 }

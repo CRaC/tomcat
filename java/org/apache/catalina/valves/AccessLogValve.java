@@ -185,7 +185,7 @@ public class AccessLogValve extends AbstractAccessLogValve implements Resource {
      * @return the directory in which we create log files.
      */
     public String getDirectory() {
-        return (directory);
+        return directory;
     }
 
 
@@ -225,7 +225,7 @@ public class AccessLogValve extends AbstractAccessLogValve implements Resource {
      * @return the log file prefix.
      */
     public String getPrefix() {
-        return (prefix);
+        return prefix;
     }
 
 
@@ -304,7 +304,7 @@ public class AccessLogValve extends AbstractAccessLogValve implements Resource {
      * @return the log file suffix.
      */
     public String getSuffix() {
-        return (suffix);
+        return suffix;
     }
 
 
@@ -615,10 +615,10 @@ public class AccessLogValve extends AbstractAccessLogValve implements Resource {
 
         // Log this message
         try {
+            message.write(System.lineSeparator());
             synchronized(this) {
                 if (writer != null) {
                     message.writeTo(writer);
-                    writer.println("");
                     if (!buffered) {
                         writer.flush();
                     }
@@ -661,7 +661,7 @@ public class AccessLogValve extends AbstractAccessLogValve implements Resource {
         } catch (IOException e) {
             writer = null;
             currentLogFile = null;
-            log.error(sm.getString("accessLogValve.openFail", pathname), e);
+            log.error(sm.getString("accessLogValve.openFail", pathname, System.getProperty("user.name")), e);
         }
         // Rotating a log file will always trigger a new file to be opened so
         // when a new file is opened, check to see if any old files need to be

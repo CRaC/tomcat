@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -88,7 +89,7 @@ public class DiskFileItem
     private String fieldName;
 
     /**
-     * The content type passed by the browser, or <code>null</code> if
+     * The content type passed by the browser, or {@code null} if
      * not defined.
      */
     private final String contentType;
@@ -99,7 +100,7 @@ public class DiskFileItem
     private boolean isFormField;
 
     /**
-     * The original filename in the user's filesystem.
+     * The original file name in the user's file system.
      */
     private final String fileName;
 
@@ -149,15 +150,15 @@ public class DiskFileItem
     // ----------------------------------------------------------- Constructors
 
     /**
-     * Constructs a new <code>DiskFileItem</code> instance.
+     * Constructs a new {@code DiskFileItem} instance.
      *
      * @param fieldName     The name of the form field.
      * @param contentType   The content type passed by the browser or
-     *                      <code>null</code> if not specified.
+     *                      {@code null} if not specified.
      * @param isFormField   Whether or not this item is a plain form field, as
      *                      opposed to a file upload.
-     * @param fileName      The original filename in the user's filesystem, or
-     *                      <code>null</code> if not specified.
+     * @param fileName      The original file name in the user's file system, or
+     *                      {@code null} if not specified.
      * @param sizeThreshold The threshold, in bytes, below which items will be
      *                      retained in memory and above which they will be
      *                      stored as a file.
@@ -165,9 +166,9 @@ public class DiskFileItem
      *                      which files will be created, should the item size
      *                      exceed the threshold.
      */
-    public DiskFileItem(String fieldName,
-            String contentType, boolean isFormField, String fileName,
-            int sizeThreshold, File repository) {
+    public DiskFileItem(final String fieldName,
+            final String contentType, final boolean isFormField, final String fileName,
+            final int sizeThreshold, final File repository) {
         this.fieldName = fieldName;
         this.contentType = contentType;
         this.isFormField = isFormField;
@@ -191,6 +192,8 @@ public class DiskFileItem
     public InputStream getInputStream()
         throws IOException {
         if (!isInMemory()) {
+            // Uses old code to avoid JVM bug
+            // https://bz.apache.org/bugzilla/show_bug.cgi?id=65710
             return new FileInputStream(dfos.getFile());
         }
 
@@ -201,10 +204,10 @@ public class DiskFileItem
     }
 
     /**
-     * Returns the content type passed by the agent or <code>null</code> if
+     * Returns the content type passed by the agent or {@code null} if
      * not defined.
      *
-     * @return The content type passed by the agent or <code>null</code> if
+     * @return The content type passed by the agent or {@code null} if
      *         not defined.
      */
     @Override
@@ -213,24 +216,24 @@ public class DiskFileItem
     }
 
     /**
-     * Returns the content charset passed by the agent or <code>null</code> if
+     * Returns the content charset passed by the agent or {@code null} if
      * not defined.
      *
-     * @return The content charset passed by the agent or <code>null</code> if
+     * @return The content charset passed by the agent or {@code null} if
      *         not defined.
      */
     public String getCharSet() {
-        ParameterParser parser = new ParameterParser();
+        final ParameterParser parser = new ParameterParser();
         parser.setLowerCaseNames(true);
         // Parameter parser can handle null input
-        Map<String,String> params = parser.parse(getContentType(), ';');
+        final Map<String, String> params = parser.parse(getContentType(), ';');
         return params.get("charset");
     }
 
     /**
-     * Returns the original filename in the client's filesystem.
+     * Returns the original file name in the client's file system.
      *
-     * @return The original filename in the client's filesystem.
+     * @return The original file name in the client's file system.
      * @throws org.apache.tomcat.util.http.fileupload.InvalidFileNameException
      *   The file name contains a NUL character, which might be an indicator of
      *   a security attack. If you intend to use the file name anyways, catch
@@ -248,8 +251,8 @@ public class DiskFileItem
      * Provides a hint as to whether or not the file contents will be read
      * from memory.
      *
-     * @return <code>true</code> if the file contents will be read
-     *         from memory; <code>false</code> otherwise.
+     * @return {@code true} if the file contents will be read
+     *         from memory; {@code false} otherwise.
      */
     @Override
     public boolean isInMemory() {
@@ -268,13 +271,14 @@ public class DiskFileItem
     public long getSize() {
         if (size >= 0) {
             return size;
-        } else if (cachedContent != null) {
-            return cachedContent.length;
-        } else if (dfos.isInMemory()) {
-            return dfos.getData().length;
-        } else {
-            return dfos.getFile().length();
         }
+        if (cachedContent != null) {
+            return cachedContent.length;
+        }
+        if (dfos.isInMemory()) {
+            return dfos.getData().length;
+        }
+        return dfos.getFile().length();
     }
 
     /**
@@ -284,28 +288,23 @@ public class DiskFileItem
      *
      * @return The contents of the file as an array of bytes
      * or {@code null} if the data cannot be read
+     *
+     * @throws IOException if an I/O error occurs
      */
     @Override
-    public byte[] get() {
+    public byte[] get() throws IOException {
         if (isInMemory()) {
             if (cachedContent == null && dfos != null) {
                 cachedContent = dfos.getData();
             }
-            return cachedContent;
+            return cachedContent != null ? cachedContent.clone() : new byte[0];
         }
 
         byte[] fileData = new byte[(int) getSize()];
-        InputStream fis = null;
 
-        try {
-            fis = new FileInputStream(dfos.getFile());
+        try (InputStream fis = Files.newInputStream(dfos.getFile().toPath())) {
             IOUtils.readFully(fis, fileData);
-        } catch (IOException e) {
-            fileData = null;
-        } finally {
-            IOUtils.closeQuietly(fis);
         }
-
         return fileData;
     }
 
@@ -323,7 +322,7 @@ public class DiskFileItem
      */
     @Override
     public String getString(final String charset)
-        throws UnsupportedEncodingException {
+        throws UnsupportedEncodingException, IOException {
         return new String(get(), charset);
     }
 
@@ -338,15 +337,15 @@ public class DiskFileItem
      */
     @Override
     public String getString() {
-        byte[] rawdata = get();
-        String charset = getCharSet();
-        if (charset == null) {
-            charset = defaultCharset;
-        }
         try {
-            return new String(rawdata, charset);
-        } catch (UnsupportedEncodingException e) {
-            return new String(rawdata);
+            byte[] rawData = get();
+            String charset = getCharSet();
+            if (charset == null) {
+                charset = defaultCharset;
+            }
+            return new String(rawData, charset);
+        } catch (final IOException e) {
+            return new String(new byte[0]);
         }
     }
 
@@ -365,48 +364,22 @@ public class DiskFileItem
      * method renames a temporary file, that file will no longer be available
      * to copy or rename again at a later time.
      *
-     * @param file The <code>File</code> into which the uploaded item should
+     * @param file The {@code File} into which the uploaded item should
      *             be stored.
      *
      * @throws Exception if an error occurs.
      */
     @Override
-    public void write(File file) throws Exception {
+    public void write(final File file) throws Exception {
         if (isInMemory()) {
-            FileOutputStream fout = null;
-            try {
-                fout = new FileOutputStream(file);
+            try (OutputStream fout = Files.newOutputStream(file.toPath())) {
                 fout.write(get());
-                fout.close();
-            } finally {
-                IOUtils.closeQuietly(fout);
+            } catch (IOException e) {
+                throw new IOException("Unexpected output data");
             }
         } else {
-            File outputFile = getStoreLocation();
-            if (outputFile != null) {
-                // Save the length of the file
-                size = outputFile.length();
-                /*
-                 * The uploaded file is being stored on disk
-                 * in a temporary location so move it to the
-                 * desired file.
-                 */
-                if (!outputFile.renameTo(file)) {
-                    BufferedInputStream in = null;
-                    BufferedOutputStream out = null;
-                    try {
-                        in = new BufferedInputStream(
-                            new FileInputStream(outputFile));
-                        out = new BufferedOutputStream(
-                                new FileOutputStream(file));
-                        IOUtils.copy(in, out);
-                        out.close();
-                    } finally {
-                        IOUtils.closeQuietly(in);
-                        IOUtils.closeQuietly(out);
-                    }
-                }
-            } else {
+            final File outputFile = getStoreLocation();
+            if (outputFile == null) {
                 /*
                  * For whatever reason we cannot write the
                  * file to disk.
@@ -414,20 +387,44 @@ public class DiskFileItem
                 throw new FileUploadException(
                     "Cannot write uploaded file to disk!");
             }
+            // Save the length of the file
+            size = outputFile.length();
+            /*
+             * The uploaded file is being stored on disk
+             * in a temporary location so move it to the
+             * desired file.
+             */
+            if (file.exists() && !file.delete()) {
+                throw new FileUploadException(
+                        "Cannot write uploaded file to disk!");
+            }
+            if (!outputFile.renameTo(file)) {
+                BufferedInputStream in = null;
+                BufferedOutputStream out = null;
+                try {
+                    in = new BufferedInputStream(new FileInputStream(outputFile));
+                    out = new BufferedOutputStream(new FileOutputStream(file));
+                    IOUtils.copy(in, out);
+                    out.close();
+                } finally {
+                    IOUtils.closeQuietly(in);
+                    IOUtils.closeQuietly(out);
+                }
+            }
         }
     }
 
     /**
      * Deletes the underlying storage for a file item, including deleting any
      * associated temporary disk file. Although this storage will be deleted
-     * automatically when the <code>FileItem</code> instance is garbage
+     * automatically when the {@code FileItem} instance is garbage
      * collected, this method can be used to ensure that this is done at an
      * earlier time, thus preserving system resources.
      */
     @Override
     public void delete() {
         cachedContent = null;
-        File outputFile = getStoreLocation();
+        final File outputFile = getStoreLocation();
         if (outputFile != null && !isInMemory() && outputFile.exists()) {
             outputFile.delete();
         }
@@ -456,16 +453,16 @@ public class DiskFileItem
      *
      */
     @Override
-    public void setFieldName(String fieldName) {
+    public void setFieldName(final String fieldName) {
         this.fieldName = fieldName;
     }
 
     /**
-     * Determines whether or not a <code>FileItem</code> instance represents
+     * Determines whether or not a {@code FileItem} instance represents
      * a simple form field.
      *
-     * @return <code>true</code> if the instance represents a simple form
-     *         field; <code>false</code> if it represents an uploaded file.
+     * @return {@code true} if the instance represents a simple form
+     *         field; {@code false} if it represents an uploaded file.
      *
      * @see #setFormField(boolean)
      *
@@ -476,17 +473,17 @@ public class DiskFileItem
     }
 
     /**
-     * Specifies whether or not a <code>FileItem</code> instance represents
+     * Specifies whether or not a {@code FileItem} instance represents
      * a simple form field.
      *
-     * @param state <code>true</code> if the instance represents a simple form
-     *              field; <code>false</code> if it represents an uploaded file.
+     * @param state {@code true} if the instance represents a simple form
+     *              field; {@code false} if it represents an uploaded file.
      *
      * @see #isFormField()
      *
      */
     @Override
-    public void setFormField(boolean state) {
+    public void setFormField(final boolean state) {
         isFormField = state;
     }
 
@@ -497,13 +494,11 @@ public class DiskFileItem
      * @return An {@link java.io.OutputStream OutputStream} that can be used
      *         for storing the contents of the file.
      *
-     * @throws IOException if an error occurs.
      */
     @Override
-    public OutputStream getOutputStream()
-        throws IOException {
+    public OutputStream getOutputStream() {
         if (dfos == null) {
-            File outputFile = getTempFile();
+            final File outputFile = getTempFile();
             dfos = new DeferredFileOutputStream(sizeThreshold, outputFile);
         }
         return dfos;
@@ -512,16 +507,16 @@ public class DiskFileItem
     // --------------------------------------------------------- Public methods
 
     /**
-     * Returns the {@link java.io.File} object for the <code>FileItem</code>'s
+     * Returns the {@link java.io.File} object for the {@code FileItem}'s
      * data's temporary location on the disk. Note that for
-     * <code>FileItem</code>s that have their data stored in memory,
-     * this method will return <code>null</code>. When handling large
+     * {@code FileItem}s that have their data stored in memory,
+     * this method will return {@code null}. When handling large
      * files, you can use {@link java.io.File#renameTo(java.io.File)} to
      * move the file to new location without copying the data, if the
      * source and destination locations reside within the same logical
      * volume.
      *
-     * @return The data file, or <code>null</code> if the data is stored in
+     * @return The data file, or {@code null} if the data is stored in
      *         memory.
      */
     public File getStoreLocation() {
@@ -540,21 +535,22 @@ public class DiskFileItem
      * Removes the file contents from the temporary storage.
      */
     @Override
-    protected void finalize() {
+    protected void finalize() throws Throwable {
         if (dfos == null || dfos.isInMemory()) {
             return;
         }
-        File outputFile = dfos.getFile();
+        final File outputFile = dfos.getFile();
 
         if (outputFile != null && outputFile.exists()) {
             outputFile.delete();
         }
+        super.finalize();
     }
 
     /**
      * Creates and returns a {@link java.io.File File} representing a uniquely
      * named temporary file in the configured repository path. The lifetime of
-     * the file is tied to the lifetime of the <code>FileItem</code> instance;
+     * the file is tied to the lifetime of the {@code FileItem} instance;
      * the file will be deleted when the instance is garbage collected.
      * <p>
      * <b>Note: Subclasses that override this method must ensure that they return the
@@ -569,8 +565,7 @@ public class DiskFileItem
                 tempDir = new File(System.getProperty("java.io.tmpdir"));
             }
 
-            String tempFileName =
-                    String.format("upload_%s_%s.tmp", UID, getUniqueId());
+            final String tempFileName = String.format("upload_%s_%s.tmp", UID, getUniqueId());
 
             tempFile = new File(tempDir, tempFileName);
         }
@@ -587,7 +582,7 @@ public class DiskFileItem
      */
     private static String getUniqueId() {
         final int limit = 100000000;
-        int current = COUNTER.getAndIncrement();
+        final int current = COUNTER.getAndIncrement();
         String id = Integer.toString(current);
 
         // If you manage to get more than 100 million of ids, you'll
@@ -624,7 +619,7 @@ public class DiskFileItem
      * @param pHeaders The file items headers.
      */
     @Override
-    public void setHeaders(FileItemHeaders pHeaders) {
+    public void setHeaders(final FileItemHeaders pHeaders) {
         headers = pHeaders;
     }
 
@@ -642,7 +637,7 @@ public class DiskFileItem
      * parameter is provided by the sender.
      * @param charset the default charset
      */
-    public void setDefaultCharset(String charset) {
+    public void setDefaultCharset(final String charset) {
         defaultCharset = charset;
     }
 }

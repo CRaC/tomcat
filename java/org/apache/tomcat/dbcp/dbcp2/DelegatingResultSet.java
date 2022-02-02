@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2;
 
 import java.io.InputStream;
@@ -102,15 +101,15 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
      * Private to ensure all construction is {@link #wrapResultSet(Connection, ResultSet)}
      * </p>
      *
-     * @param conn
+     * @param connection
      *            Connection which created this ResultSet
-     * @param res
+     * @param resultSet
      *            ResultSet to wrap
      */
-    private DelegatingResultSet(final Connection conn, final ResultSet res) {
-        super((AbandonedTrace) conn);
-        this.connection = conn;
-        this.resultSet = res;
+    private DelegatingResultSet(final Connection connection, final ResultSet resultSet) {
+        super((AbandonedTrace) connection);
+        this.connection = connection;
+        this.resultSet = resultSet;
     }
 
     /**
@@ -185,11 +184,11 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     public void close() throws SQLException {
         try {
             if (statement != null) {
-                ((AbandonedTrace) statement).removeTrace(this);
+                removeThisTrace(statement);
                 statement = null;
             }
             if (connection != null) {
-                ((AbandonedTrace) connection).removeTrace(this);
+                removeThisTrace(connection);
                 connection = null;
             }
             resultSet.close();
@@ -604,10 +603,9 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
      *
      * @return the innermost delegate.
      */
-    @SuppressWarnings("resource")
     public ResultSet getInnermostDelegate() {
         ResultSet r = resultSet;
-        while (r != null && r instanceof DelegatingResultSet) {
+        while (r instanceof DelegatingResultSet) {
             r = ((DelegatingResultSet) r).getDelegate();
             if (this == r) {
                 return null;
@@ -739,7 +737,7 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     @Override
     public <T> T getObject(final int columnIndex, final Class<T> type) throws SQLException {
         try {
-            return resultSet.getObject(columnIndex, type);
+            return Jdbc41Bridge.getObject(resultSet, columnIndex, type);
         } catch (final SQLException e) {
             handleException(e);
             return null;
@@ -769,7 +767,7 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     @Override
     public <T> T getObject(final String columnLabel, final Class<T> type) throws SQLException {
         try {
-            return resultSet.getObject(columnLabel, type);
+            return Jdbc41Bridge.getObject(resultSet, columnLabel, type);
         } catch (final SQLException e) {
             handleException(e);
             return null;
@@ -1046,9 +1044,9 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     }
 
     protected void handleException(final SQLException e) throws SQLException {
-        if (statement != null && statement instanceof DelegatingStatement) {
+        if (statement instanceof DelegatingStatement) {
             ((DelegatingStatement) statement).handleException(e);
-        } else if (connection != null && connection instanceof DelegatingConnection) {
+        } else if (connection instanceof DelegatingConnection) {
             ((DelegatingConnection<?>) connection).handleException(e);
         } else {
             throw e;
@@ -1118,11 +1116,11 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     public boolean isWrapperFor(final Class<?> iface) throws SQLException {
         if (iface.isAssignableFrom(getClass())) {
             return true;
-        } else if (iface.isAssignableFrom(resultSet.getClass())) {
-            return true;
-        } else {
-            return resultSet.isWrapperFor(iface);
         }
+        if (iface.isAssignableFrom(resultSet.getClass())) {
+            return true;
+        }
+        return resultSet.isWrapperFor(iface);
     }
 
     @Override
@@ -1241,19 +1239,19 @@ public final class DelegatingResultSet extends AbandonedTrace implements ResultS
     }
 
     @Override
-    public String toString() {
-        return super.toString() + "[_res=" + resultSet + ", _stmt=" + statement + ", _conn=" + connection + "]";
+    public synchronized String toString() {
+        return super.toString() + "[resultSet=" + resultSet + ", statement=" + statement + ", connection=" + connection + "]";
     }
 
     @Override
     public <T> T unwrap(final Class<T> iface) throws SQLException {
         if (iface.isAssignableFrom(getClass())) {
             return iface.cast(this);
-        } else if (iface.isAssignableFrom(resultSet.getClass())) {
-            return iface.cast(resultSet);
-        } else {
-            return resultSet.unwrap(iface);
         }
+        if (iface.isAssignableFrom(resultSet.getClass())) {
+            return iface.cast(resultSet);
+        }
+        return resultSet.unwrap(iface);
     }
 
     @Override

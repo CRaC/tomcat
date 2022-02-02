@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2.cpdsadapter;
 
 import java.sql.CallableStatement;
@@ -242,7 +241,7 @@ class ConnectionImpl extends DelegatingConnection<Connection> {
     }
 
     @Override
-    public PreparedStatement prepareStatement(final String sql, final int columnIndexes[]) throws SQLException {
+    public PreparedStatement prepareStatement(final String sql, final int[] columnIndexes) throws SQLException {
         checkOpen();
         try {
             return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql, columnIndexes));
@@ -253,7 +252,7 @@ class ConnectionImpl extends DelegatingConnection<Connection> {
     }
 
     @Override
-    public PreparedStatement prepareStatement(final String sql, final String columnNames[]) throws SQLException {
+    public PreparedStatement prepareStatement(final String sql, final String[] columnNames) throws SQLException {
         checkOpen();
         try {
             return new DelegatingPreparedStatement(this, pooledConnection.prepareStatement(sql, columnNames));

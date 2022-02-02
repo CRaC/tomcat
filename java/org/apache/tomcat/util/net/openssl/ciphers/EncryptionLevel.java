@@ -14,15 +14,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
-enum EncryptionLevel {
+public enum EncryptionLevel {
     STRONG_NONE,
     EXP40,
     EXP56,
     LOW,
     MEDIUM,
     HIGH,
-    FIPS;
+    FIPS
 }

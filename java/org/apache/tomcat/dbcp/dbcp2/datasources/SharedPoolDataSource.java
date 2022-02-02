@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.dbcp.dbcp2.datasources;
 
 import java.io.IOException;
@@ -76,9 +75,6 @@ public class SharedPoolDataSource extends InstanceKeyDataSource {
         InstanceKeyDataSourceFactory.removeInstance(getInstanceKey());
     }
 
-    // -------------------------------------------------------------------
-    // Properties
-
     /**
      * Gets {@link GenericKeyedObjectPool#getMaxTotal()} for this pool.
      *
@@ -120,9 +116,6 @@ public class SharedPoolDataSource extends InstanceKeyDataSource {
         return pool == null ? 0 : pool.getNumIdle();
     }
 
-    // ----------------------------------------------------------------------
-    // Inherited abstract methods
-
     @Override
     protected PooledConnectionAndInfo getPooledConnectionAndInfo(final String userName, final String userPassword)
             throws SQLException {
@@ -155,7 +148,7 @@ public class SharedPoolDataSource extends InstanceKeyDataSource {
     }
 
     /**
-     * Returns a <code>SharedPoolDataSource</code> {@link Reference}.
+     * Creates a new {@link Reference} to a {@link SharedPoolDataSource}.
      */
     @Override
     public Reference getReference() throws NamingException {
@@ -234,5 +227,12 @@ public class SharedPoolDataSource extends InstanceKeyDataSource {
         } catch (final NamingException e) {
             throw new IOException("NamingException: " + e);
         }
+    }
+
+    @Override
+    protected void toStringFields(final StringBuilder builder) {
+        super.toStringFields(builder);
+        builder.append(", maxTotal=");
+        builder.append(maxTotal);
     }
 }

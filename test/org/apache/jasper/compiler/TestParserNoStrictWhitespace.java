@@ -14,11 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
-
-import java.util.HashMap;
-import java.util.List;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -110,8 +106,7 @@ public class TestParserNoStrictWhitespace extends TomcatBaseTest {
 
         ByteChunk res = new ByteChunk();
         int sc = getUrl("http://localhost:" + getPort() +
-                "/test/bug49nnn/bug49297NoSpace.jsp", res,
-                new HashMap<String,List<String>>());
+                "/test/bug49nnn/bug49297NoSpace.jsp", res, null);
 
 
         Assert.assertEquals(200, sc);
@@ -123,8 +118,7 @@ public class TestParserNoStrictWhitespace extends TomcatBaseTest {
         getTomcatInstanceTestWebapp(false, true);
 
         int sc = getUrl("http://localhost:" + getPort() +
-                "/test/bug49nnn/bug49297DuplicateAttr.jsp", new ByteChunk(),
-                new HashMap<String,List<String>>());
+                "/test/bug49nnn/bug49297DuplicateAttr.jsp", new ByteChunk(), null);
 
         Assert.assertEquals(500, sc);
     }

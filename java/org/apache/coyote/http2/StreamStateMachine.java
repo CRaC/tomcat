@@ -16,6 +16,7 @@
  */
 package org.apache.coyote.http2;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -33,50 +34,48 @@ import org.apache.tomcat.util.res.StringManager;
  * </ul>
  *
  */
-public class StreamStateMachine {
+class StreamStateMachine {
 
     private static final Log log = LogFactory.getLog(StreamStateMachine.class);
     private static final StringManager sm = StringManager.getManager(StreamStateMachine.class);
 
-    private final Stream stream;
+    private final String connectionId;
+    private final String streamId;
+
     private State state;
 
 
-    public StreamStateMachine(Stream stream) {
-        this.stream = stream;
+    StreamStateMachine(String connectionId, String streamId) {
+        this.connectionId = connectionId;
+        this.streamId = streamId;
         stateChange(null, State.IDLE);
     }
 
 
-    public synchronized void sentPushPromise() {
+    final synchronized void sentPushPromise() {
         stateChange(State.IDLE, State.RESERVED_LOCAL);
     }
 
 
-    public synchronized void receivedPushPromise() {
-        stateChange(State.IDLE, State.RESERVED_REMOTE);
-    }
-
-
-    public synchronized void sentStartOfHeaders() {
-        stateChange(State.IDLE, State.OPEN);
+    final synchronized void sentHeaders() {
+        // No change if currently OPEN
         stateChange(State.RESERVED_LOCAL, State.HALF_CLOSED_REMOTE);
     }
 
 
-    public synchronized void receivedStartOfHeaders() {
+    final synchronized void receivedStartOfHeaders() {
         stateChange(State.IDLE, State.OPEN);
         stateChange(State.RESERVED_REMOTE, State.HALF_CLOSED_LOCAL);
     }
 
 
-    public synchronized void sentEndOfStream() {
+    final synchronized void sentEndOfStream() {
         stateChange(State.OPEN, State.HALF_CLOSED_LOCAL);
         stateChange(State.HALF_CLOSED_REMOTE, State.CLOSED_TX);
     }
 
 
-    public synchronized void receivedEndOfStream() {
+    final synchronized void receivedEndOfStream() {
         stateChange(State.OPEN, State.HALF_CLOSED_REMOTE);
         stateChange(State.HALF_CLOSED_LOCAL, State.CLOSED_RX);
     }
@@ -96,7 +95,7 @@ public class StreamStateMachine {
     public synchronized void sendReset() {
         if (state == State.IDLE) {
             throw new IllegalStateException(sm.getString("streamStateMachine.debug.change",
-                    stream.getConnectionId(), stream.getIdentifier(), state));
+                    connectionId, streamId, state));
         }
         if (state.canReset()) {
             stateChange(state, State.CLOSED_RST_TX);
@@ -113,55 +112,55 @@ public class StreamStateMachine {
         if (state == oldState) {
             state = newState;
             if (log.isDebugEnabled()) {
-                log.debug(sm.getString("streamStateMachine.debug.change", stream.getConnectionId(),
-                        stream.getIdentifier(), oldState, newState));
+                log.debug(sm.getString("streamStateMachine.debug.change", connectionId,
+                        streamId, oldState, newState));
             }
         }
     }
 
 
-    public synchronized void checkFrameType(FrameType frameType) throws Http2Exception {
+    final synchronized void checkFrameType(FrameType frameType) throws Http2Exception {
         // No state change. Checks that receiving the frame type is valid for
         // the current state of this stream.
         if (!isFrameTypePermitted(frameType)) {
             if (state.connectionErrorForInvalidFrame) {
                 throw new ConnectionException(sm.getString("streamStateMachine.invalidFrame",
-                        stream.getConnectionId(), stream.getIdentifier(), state, frameType),
+                        connectionId, streamId, state, frameType),
                         state.errorCodeForInvalidFrame);
             } else {
                 throw new StreamException(sm.getString("streamStateMachine.invalidFrame",
-                        stream.getConnectionId(), stream.getIdentifier(), state, frameType),
-                        state.errorCodeForInvalidFrame, stream.getIdAsInt());
+                        connectionId, streamId, state, frameType),
+                        state.errorCodeForInvalidFrame, Integer.parseInt(streamId));
             }
         }
     }
 
 
-    public synchronized boolean isFrameTypePermitted(FrameType frameType) {
+    final synchronized boolean isFrameTypePermitted(FrameType frameType) {
         return state.isFrameTypePermitted(frameType);
     }
 
 
-    public synchronized boolean isActive() {
+    final synchronized boolean isActive() {
         return state.isActive();
     }
 
 
-    public synchronized boolean canRead() {
+    final synchronized boolean canRead() {
         return state.canRead();
     }
 
 
-    public synchronized boolean canWrite() {
+    final synchronized boolean canWrite() {
         return state.canWrite();
     }
 
 
-    public synchronized boolean isClosedFinal() {
+    final synchronized boolean isClosedFinal() {
         return state == State.CLOSED_FINAL;
     }
 
-    public synchronized void closeIfIdle() {
+    final synchronized void closeIfIdle() {
         stateChange(State.IDLE, State.CLOSED_FINAL);
     }
 
@@ -219,7 +218,7 @@ public class StreamStateMachine {
         private final boolean canReset;
         private final boolean connectionErrorForInvalidFrame;
         private final Http2Error errorCodeForInvalidFrame;
-        private final Set<FrameType> frameTypesPermitted = new HashSet<>();
+        private final Set<FrameType> frameTypesPermitted;
 
         private State(boolean canRead, boolean canWrite, boolean canReset,
                 boolean connectionErrorForInvalidFrame, Http2Error errorCode,
@@ -229,9 +228,7 @@ public class StreamStateMachine {
             this.canReset = canReset;
             this.connectionErrorForInvalidFrame = connectionErrorForInvalidFrame;
             this.errorCodeForInvalidFrame = errorCode;
-            for (FrameType frameType : frameTypes) {
-                frameTypesPermitted.add(frameType);
-            }
+            frameTypesPermitted = new HashSet<>(Arrays.asList(frameTypes));
         }
 
         public boolean isActive() {

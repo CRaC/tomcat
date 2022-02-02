@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.manager;
 
 
@@ -119,15 +117,10 @@ public class StatusManagerServlet
             onStr = "*:type=ThreadPool,*";
             objectName = new ObjectName(onStr);
             set = mBeanServer.queryMBeans(objectName, null);
-            onStr = "*:type=ThreadPool,*,subType=SocketProperties";
-            objectName = new ObjectName(onStr);
-            Set<ObjectInstance> set2 = mBeanServer.queryMBeans(objectName, null);
             iterator = set.iterator();
             while (iterator.hasNext()) {
                 ObjectInstance oi = iterator.next();
-                if (!set2.contains(oi)) {
-                    threadPools.addElement(oi.getObjectName());
-                }
+                threadPools.addElement(oi.getObjectName());
             }
 
             // Query Global Request Processors
@@ -328,7 +321,7 @@ public class StatusManagerServlet
                 args[5] = smClient.getString("htmlManagerServlet.connectorStateProcessingTime");
                 args[6] = smClient.getString("htmlManagerServlet.connectorStateRequestCount");
                 args[7] = smClient.getString("htmlManagerServlet.connectorStateErrorCount");
-                args[8] = smClient.getString("htmlManagerServlet.connectorStateBytesRecieved");
+                args[8] = smClient.getString("htmlManagerServlet.connectorStateBytesReceived");
                 args[9] = smClient.getString("htmlManagerServlet.connectorStateBytesSent");
                 args[10] = smClient.getString("htmlManagerServlet.connectorStateTableTitleStage");
                 args[11] = smClient.getString("htmlManagerServlet.connectorStateTableTitleTime");
@@ -401,14 +394,7 @@ public class StatusManagerServlet
                         requestProcessors.removeElement(objectName);
                     }
                 }
-                String j2eeType = objectName.getKeyProperty("j2eeType");
-                if (j2eeType != null) {
-
-                }
             }
         }
-
     }
-
-
 }

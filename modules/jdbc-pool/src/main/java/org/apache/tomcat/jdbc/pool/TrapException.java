@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.jdbc.pool;
 
 
@@ -23,7 +22,7 @@ import java.lang.reflect.Method;
 import java.sql.SQLException;
 /**
  * Interceptor that traps any unhandled exception types and throws an exception that has been declared by the method
- * called, or throw a SQLException if it is declared.
+ * called, or throw an SQLException if it is declared.
  * If the caught exception is not declared, and the method doesn't throw SQLException, then this interceptor will
  * throw a RuntimeException
  *
@@ -65,7 +64,9 @@ public class TrapException extends JdbcInterceptor {
 
     public boolean isDeclaredException(Method m, Class<?> clazz) {
         for (Class<?> cl : m.getExceptionTypes()) {
-            if (cl.equals(clazz) || cl.isAssignableFrom(clazz)) return true;
+            if (cl.equals(clazz) || cl.isAssignableFrom(clazz)) {
+              return true;
+            }
         }
         return false;
     }

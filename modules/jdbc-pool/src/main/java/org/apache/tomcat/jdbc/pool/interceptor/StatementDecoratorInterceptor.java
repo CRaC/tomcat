@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.jdbc.pool.interceptor;
 
 import java.lang.reflect.Constructor;
@@ -49,7 +47,7 @@ public class StatementDecoratorInterceptor extends AbstractCreateStatementInterc
     /**
      * the constructor to create the resultSet proxies
      */
-    protected static Constructor<?> resultSetConstructor = null;
+    protected static volatile Constructor<?> resultSetConstructor = null;
 
     @Override
     public void closeInvoked() {
@@ -212,14 +210,17 @@ public class StatementDecoratorInterceptor extends AbstractCreateStatementInterc
             // was close invoked?
             boolean close = compare(CLOSE_VAL, method);
             // allow close to be called multiple times
-            if (close && closed)
-                return null;
+            if (close && closed) {
+              return null;
+            }
             // are we calling isClosed?
-            if (compare(ISCLOSED_VAL, method))
-                return Boolean.valueOf(closed);
+            if (compare(ISCLOSED_VAL, method)) {
+              return Boolean.valueOf(closed);
+            }
             // if we are calling anything else, bail out
-            if (closed)
-                throw new SQLException("Statement closed.");
+            if (closed) {
+              throw new SQLException("Statement closed.");
+            }
             if (compare(GETCONNECTION_VAL,method)){
                 return connection;
             }

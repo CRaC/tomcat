@@ -81,7 +81,7 @@ public class TestPersistentProviderRegistrations {
         validateSimple(end);
 
         if (f.exists()) {
-            f.delete();
+            Assert.assertTrue("Failed to clean up [" + f + "]", f.delete());
         }
     }
 
@@ -126,7 +126,9 @@ public class TestPersistentProviderRegistrations {
             validateNoLayerAndAC(loadedProviders);
         } finally {
             if (f.exists()) {
-                f.delete();
+                if (!f.delete()) {
+                    Assert.fail("Failed to delete " + f);
+                }
             }
         }
     }

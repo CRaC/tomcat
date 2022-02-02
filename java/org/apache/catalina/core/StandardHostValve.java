@@ -17,6 +17,7 @@
 package org.apache.catalina.core;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.DispatcherType;
 import javax.servlet.RequestDispatcher;
@@ -31,6 +32,7 @@ import org.apache.catalina.connector.ClientAbortException;
 import org.apache.catalina.connector.Request;
 import org.apache.catalina.connector.Response;
 import org.apache.catalina.valves.ValveBase;
+import org.apache.coyote.ActionCode;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
@@ -50,12 +52,12 @@ import org.apache.tomcat.util.res.StringManager;
 final class StandardHostValve extends ValveBase {
 
     private static final Log log = LogFactory.getLog(StandardHostValve.class);
+    private static final StringManager sm = StringManager.getManager(StandardHostValve.class);
 
     // Saves a call to getClassLoader() on very request. Under high load these
     // calls took just long enough to appear as a hot spot (although a very
     // minor one) in a profiler.
-    private static final ClassLoader MY_CLASSLOADER =
-            StandardHostValve.class.getClassLoader();
+    private static final ClassLoader MY_CLASSLOADER = StandardHostValve.class.getClassLoader();
 
     static final boolean STRICT_SERVLET_COMPLIANCE;
 
@@ -74,18 +76,10 @@ final class StandardHostValve extends ValveBase {
     }
 
     //------------------------------------------------------ Constructor
+
     public StandardHostValve() {
         super(true);
     }
-
-
-    // ----------------------------------------------------- Instance Variables
-
-    /**
-     * The string manager for this package.
-     */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
 
 
     // --------------------------------------------------------- Public Methods
@@ -108,6 +102,10 @@ final class StandardHostValve extends ValveBase {
         // Select the Context to be used for this Request
         Context context = request.getContext();
         if (context == null) {
+            // Don't overwrite an existing error
+            if (!response.isError()) {
+                response.sendError(404);
+            }
             return;
         }
 
@@ -162,10 +160,16 @@ final class StandardHostValve extends ValveBase {
 
             // Look for (and render if found) an application level error page
             if (response.isErrorReportRequired()) {
-                if (t != null) {
-                    throwable(request, response, t);
-                } else {
-                    status(request, response);
+                // If an error has occurred that prevents further I/O, don't waste time
+                // producing an error report that will never be read
+                AtomicBoolean result = new AtomicBoolean(false);
+                response.getCoyoteResponse().action(ActionCode.IS_IO_ALLOWED, result);
+                if (result.get()) {
+                    if (t != null) {
+                        throwable(request, response, t);
+                    } else {
+                        status(request, response);
+                    }
                 }
             }
 
@@ -378,6 +382,19 @@ final class StandardHostValve extends ValveBase {
                 // Response is committed - including the error page is the
                 // best we can do
                 rd.include(request.getRequest(), response.getResponse());
+
+                // Ensure the combined incomplete response and error page is
+                // written to the client
+                try {
+                    response.flushBuffer();
+                } catch (Throwable t) {
+                    ExceptionUtils.handleThrowable(t);
+                }
+
+                // Now close immediately as an additional signal to the client
+                // that something went wrong
+                response.getCoyoteResponse().action(ActionCode.CLOSE_NOW,
+                        request.getAttribute(RequestDispatcher.ERROR_EXCEPTION));
             } else {
                 // Reset the response (keeping the real error code and message)
                 response.resetBuffer(true);

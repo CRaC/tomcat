@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.jasper.tagplugins.jstl.core;
 
 import org.apache.jasper.compiler.tagplugin.TagPlugin;
@@ -35,8 +33,7 @@ public final class When implements TagPlugin {
         if ("true".equals(parentContext.getPluginAttribute("hasBeenHere"))) {
             ctxt.generateJavaSource("} else if(");
             // See comment below for the reason we generate the extra "}" here.
-        }
-        else {
+        } else {
             ctxt.generateJavaSource("if(");
             parentContext.setPluginAttribute("hasBeenHere", "true");
         }

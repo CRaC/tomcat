@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.util.ArrayList;
@@ -95,44 +94,45 @@ class ScriptingVariabler {
             Node.CustomTag parent = n.getCustomTagParent();
             if (scope == VariableInfo.AT_BEGIN
                     || scope == VariableInfo.AT_END) {
-                if (parent == null)
+                if (parent == null) {
                     ownRange = MAX_SCOPE;
-                else
+                } else {
                     ownRange = parent.getNumCount();
+                }
             } else {
                 // NESTED
                 ownRange = n.getNumCount();
             }
 
             if (varInfos.length > 0) {
-                for (int i=0; i<varInfos.length; i++) {
-                    if (varInfos[i].getScope() != scope
-                            || !varInfos[i].getDeclare()) {
+                for (VariableInfo varInfo : varInfos) {
+                    if (varInfo.getScope() != scope
+                            || !varInfo.getDeclare()) {
                         continue;
                     }
-                    String varName = varInfos[i].getVarName();
+                    String varName = varInfo.getVarName();
 
                     Integer currentRange = scriptVars.get(varName);
                     if (currentRange == null ||
                             ownRange.compareTo(currentRange) > 0) {
                         scriptVars.put(varName, ownRange);
-                        vec.add(varInfos[i]);
+                        vec.add(varInfo);
                     }
                 }
             } else {
-                for (int i=0; i<tagVarInfos.length; i++) {
-                    if (tagVarInfos[i].getScope() != scope
-                            || !tagVarInfos[i].getDeclare()) {
+                for (TagVariableInfo tagVarInfo : tagVarInfos) {
+                    if (tagVarInfo.getScope() != scope
+                            || !tagVarInfo.getDeclare()) {
                         continue;
                     }
-                    String varName = tagVarInfos[i].getNameGiven();
+                    String varName = tagVarInfo.getNameGiven();
                     if (varName == null) {
                         varName = n.getTagData().getAttributeString(
-                                        tagVarInfos[i].getNameFromAttribute());
+                                tagVarInfo.getNameFromAttribute());
                         if (varName == null) {
                             err.jspError(n,
                                     "jsp.error.scripting.variable.missing_name",
-                                    tagVarInfos[i].getNameFromAttribute());
+                                    tagVarInfo.getNameFromAttribute());
                         }
                     }
 
@@ -140,7 +140,7 @@ class ScriptingVariabler {
                     if (currentRange == null ||
                             ownRange.compareTo(currentRange) > 0) {
                         scriptVars.put(varName, ownRange);
-                        vec.add(tagVarInfos[i]);
+                        vec.add(tagVarInfo);
                     }
                 }
             }

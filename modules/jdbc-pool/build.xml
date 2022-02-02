@@ -86,6 +86,9 @@
   </fileset>
 
   <!-- Version info filter set -->
+  <tstamp>
+    <format property="tstamp.file" pattern="yyyy-MM-dd HH:mm:ss"/>
+  </tstamp>
   <filterset id="version.filters">
     <filter token="YEAR" value="${year}"/>
     <filter token="VERSION" value="${version}"/>
@@ -137,7 +140,9 @@
       <sourcepath location="${basedir}/src/main/java"/>
     </javadoc>
     <!-- connection pool API  file-->
-    <jar jarfile="${tomcat-jdbc-api.jar}" update="true">
+    <jar jarfile="${tomcat-jdbc-api.jar}"
+         update="true"
+         modificationtime="${tstamp.file}">
       <fileset dir="${tomcat.api}"/>
       <fileset refid="license.notice"/>
     </jar>
@@ -159,7 +164,10 @@
     </javac>
 
     <!-- connection pool JAR File -->
-    <jar jarfile="${tomcat-jdbc.jar}" update="true" manifest="${tomcat.pool}/resources/MANIFEST.MF">
+    <jar jarfile="${tomcat-jdbc.jar}"
+         update="true"
+         manifest="${tomcat.pool}/resources/MANIFEST.MF"
+         modificationtime="${tstamp.file}">
       <fileset dir="${tomcat.classes}">
         <include name="org/apache/tomcat/jdbc/**" />
       </fileset>

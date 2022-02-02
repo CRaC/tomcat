@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.catalina.filters;
 
 import java.io.ByteArrayInputStream;
@@ -37,7 +36,7 @@ public class TestCsrfPreventionFilter extends TomcatBaseTest {
 
     private final HttpServletResponse wrapper =
         new CsrfPreventionFilter.CsrfResponseWrapper(
-                new NonEncodingResponse(), "TESTNONCE");
+                new NonEncodingResponse(), Constants.CSRF_NONCE_SESSION_ATTR_NAME, "TESTNONCE");
 
     @Test
     public void testAddNonceNoQueryNoAnchor() throws Exception {

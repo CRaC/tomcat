@@ -24,14 +24,14 @@ import java.io.UnsupportedEncodingException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.security.Permission;
+import java.util.ArrayList;
 import java.util.EmptyStackException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.PropertyPermission;
 import java.util.Set;
+import java.util.StringTokenizer;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -41,9 +41,9 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.ExceptionUtils;
 import org.apache.tomcat.util.IntrospectionUtils;
+import org.apache.tomcat.util.IntrospectionUtils.PropertySource;
 import org.apache.tomcat.util.buf.B2CConverter;
 import org.apache.tomcat.util.res.StringManager;
-import org.apache.tomcat.util.security.PermissionCheck;
 import org.xml.sax.Attributes;
 import org.xml.sax.EntityResolver;
 import org.xml.sax.ErrorHandler;
@@ -55,6 +55,7 @@ import org.xml.sax.SAXNotSupportedException;
 import org.xml.sax.SAXParseException;
 import org.xml.sax.XMLReader;
 import org.xml.sax.ext.DefaultHandler2;
+import org.xml.sax.ext.EntityResolver2;
 import org.xml.sax.ext.Locator2;
 import org.xml.sax.helpers.AttributesImpl;
 
@@ -82,32 +83,37 @@ public class Digester extends DefaultHandler2 {
 
     // ---------------------------------------------------------- Static Fields
 
-    protected static IntrospectionUtils.PropertySource propertySource;
-    private static boolean propertySourceSet = false;
+    protected static IntrospectionUtils.PropertySource[] propertySources;
+    private static boolean propertySourcesSet = false;
     protected static final StringManager sm = StringManager.getManager(Digester.class);
 
     static {
-        String className = System.getProperty("org.apache.tomcat.util.digester.PROPERTY_SOURCE");
-        IntrospectionUtils.PropertySource source = null;
-        if (className != null) {
-            ClassLoader[] cls = new ClassLoader[] { Digester.class.getClassLoader(),
-                    Thread.currentThread().getContextClassLoader() };
-            for (int i = 0; i < cls.length; i++) {
-                try {
-                    Class<?> clazz = Class.forName(className, true, cls[i]);
-                    source = (IntrospectionUtils.PropertySource)
-                            clazz.getConstructor().newInstance();
-                    break;
-                } catch (Throwable t) {
-                    ExceptionUtils.handleThrowable(t);
+        String classNames = System.getProperty("org.apache.tomcat.util.digester.PROPERTY_SOURCE");
+        ArrayList<IntrospectionUtils.PropertySource> sourcesList = new ArrayList<>();
+        IntrospectionUtils.PropertySource[] sources = null;
+        if (classNames != null) {
+            StringTokenizer classNamesTokenizer = new StringTokenizer(classNames, ",");
+            while (classNamesTokenizer.hasMoreTokens()) {
+                String className = classNamesTokenizer.nextToken().trim();
+                ClassLoader[] cls = new ClassLoader[] { Digester.class.getClassLoader(),
+                        Thread.currentThread().getContextClassLoader() };
+                for (ClassLoader cl : cls) {
+                    try {
+                        Class<?> clazz = Class.forName(className, true, cl);
+                        sourcesList.add((PropertySource) clazz.getConstructor().newInstance());
+                        break;
+                    } catch (Throwable t) {
+                        ExceptionUtils.handleThrowable(t);
                     LogFactory.getLog("org.apache.tomcat.util.digester.Digester")
                             .error("Unable to load property source[" + className + "].", t);
+                    }
                 }
             }
+            sources = sourcesList.toArray(new IntrospectionUtils.PropertySource[0]);
         }
-        if (source != null) {
-            propertySource = source;
-            propertySourceSet = true;
+        if (sources != null) {
+            propertySources = sources;
+            propertySourcesSet = true;
         }
         if (Boolean.getBoolean("org.apache.tomcat.util.digester.REPLACE_SYSTEM_PROPERTIES")) {
             replaceSystemProperties();
@@ -115,32 +121,37 @@ public class Digester extends DefaultHandler2 {
     }
 
     public static void setPropertySource(IntrospectionUtils.PropertySource propertySource) {
-        if (!propertySourceSet) {
-            Digester.propertySource = propertySource;
-            propertySourceSet = true;
+        if (!propertySourcesSet) {
+            propertySources = new IntrospectionUtils.PropertySource[1];
+            propertySources[0] = propertySource;
+            propertySourcesSet = true;
+        }
+    }
+
+    public static void setPropertySource(IntrospectionUtils.PropertySource[] propertySources) {
+        if (!propertySourcesSet) {
+            Digester.propertySources = propertySources;
+            propertySourcesSet = true;
         }
     }
 
     // --------------------------------------------------- Instance Variables
 
 
-    private class SystemPropertySource implements IntrospectionUtils.PropertySource {
-        @Override
-        public String getProperty(String key) {
-            ClassLoader cl = getClassLoader();
-            if (cl instanceof PermissionCheck) {
-                Permission p = new PropertyPermission(key, "read");
-                if (!((PermissionCheck) cl).check(p)) {
-                    return null;
-                }
-            }
-            return System.getProperty(key);
-        }
+    /**
+     * A {@link org.apache.tomcat.util.IntrospectionUtils.SecurePropertySource}
+     * that uses environment variables to resolve expressions. Still available
+     * for backwards compatibility.
+     *
+     * @deprecated Use {@link org.apache.tomcat.util.digester.EnvironmentPropertySource}
+     *             This will be removed in Tomcat 10 onwards.
+     */
+    @Deprecated
+    public static class EnvironmentPropertySource extends org.apache.tomcat.util.digester.EnvironmentPropertySource {
     }
 
 
-    protected IntrospectionUtils.PropertySource source[] = new IntrospectionUtils.PropertySource[] {
-            new SystemPropertySource() };
+    protected IntrospectionUtils.PropertySource[] source;
 
 
     /**
@@ -241,6 +252,7 @@ public class Digester extends DefaultHandler2 {
      */
     protected ArrayStack<Object> params = new ArrayStack<>();
 
+
     /**
      * The SAXParser we will use to parse the input stream.
      */
@@ -318,25 +330,34 @@ public class Digester extends DefaultHandler2 {
 
 
     public Digester() {
-        propertySourceSet = true;
-        if (propertySource != null) {
-            source = new IntrospectionUtils.PropertySource[] { propertySource, source[0] };
+        propertySourcesSet = true;
+        ArrayList<IntrospectionUtils.PropertySource> sourcesList = new ArrayList<>();
+        boolean systemPropertySourceFound = false;
+        if (propertySources != null) {
+            for (IntrospectionUtils.PropertySource source : propertySources) {
+                if (source instanceof SystemPropertySource) {
+                    systemPropertySourceFound = true;
+                }
+                sourcesList.add(source);
+            }
         }
+        if (!systemPropertySourceFound) {
+            sourcesList.add(new SystemPropertySource());
+        }
+        source = sourcesList.toArray(new IntrospectionUtils.PropertySource[0]);
     }
 
 
     public static void replaceSystemProperties() {
         Log log = LogFactory.getLog(Digester.class);
-        if (propertySource != null) {
-            IntrospectionUtils.PropertySource[] propertySources =
-                    new IntrospectionUtils.PropertySource[] { propertySource };
+        if (propertySources != null) {
             Properties properties = System.getProperties();
             Set<String> names = properties.stringPropertyNames();
             for (String name : names) {
                 String value = System.getProperty(name);
                 if (value != null) {
                     try {
-                        String newValue = IntrospectionUtils.replaceProperties(value, null, propertySources);
+                        String newValue = IntrospectionUtils.replaceProperties(value, null, propertySources, null);
                         if (!value.equals(newValue)) {
                             System.setProperty(name, newValue);
                         }
@@ -360,17 +381,15 @@ public class Digester extends DefaultHandler2 {
      * @return the namespace URI
      */
     public String findNamespaceURI(String prefix) {
-
         ArrayStack<String> stack = namespaces.get(prefix);
         if (stack == null) {
-            return (null);
+            return null;
         }
         try {
             return stack.peek();
         } catch (EmptyStackException e) {
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -386,18 +405,16 @@ public class Digester extends DefaultHandler2 {
      * @return the classloader
      */
     public ClassLoader getClassLoader() {
-
         if (this.classLoader != null) {
-            return (this.classLoader);
+            return this.classLoader;
         }
         if (this.useContextClassLoader) {
             ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
             if (classLoader != null) {
-                return (classLoader);
+                return classLoader;
             }
         }
-        return (this.getClass().getClassLoader());
-
+        return this.getClass().getClassLoader();
     }
 
 
@@ -409,9 +426,7 @@ public class Digester extends DefaultHandler2 {
      *  to revert to the standard rules
      */
     public void setClassLoader(ClassLoader classLoader) {
-
         this.classLoader = classLoader;
-
     }
 
 
@@ -419,9 +434,7 @@ public class Digester extends DefaultHandler2 {
      * @return the current depth of the element stack.
      */
     public int getCount() {
-
-        return (stack.size());
-
+        return stack.size();
     }
 
 
@@ -429,14 +442,12 @@ public class Digester extends DefaultHandler2 {
      * @return the name of the XML element that is currently being processed.
      */
     public String getCurrentElementName() {
-
         String elementName = match;
         int lastSlash = elementName.lastIndexOf('/');
         if (lastSlash >= 0) {
             elementName = elementName.substring(lastSlash + 1);
         }
-        return (elementName);
-
+        return elementName;
     }
 
 
@@ -444,9 +455,7 @@ public class Digester extends DefaultHandler2 {
      * @return the error handler for this Digester.
      */
     public ErrorHandler getErrorHandler() {
-
-        return (this.errorHandler);
-
+        return this.errorHandler;
     }
 
 
@@ -456,9 +465,7 @@ public class Digester extends DefaultHandler2 {
      * @param errorHandler The new error handler
      */
     public void setErrorHandler(ErrorHandler errorHandler) {
-
         this.errorHandler = errorHandler;
-
     }
 
 
@@ -489,8 +496,7 @@ public class Digester extends DefaultHandler2 {
                 factory.setFeature("http://apache.org/xml/features/validation/schema", true);
             }
         }
-        return (factory);
-
+        return factory;
     }
 
 
@@ -581,9 +587,7 @@ public class Digester extends DefaultHandler2 {
      * @return the "namespace aware" flag for parsers we create.
      */
     public boolean getNamespaceAware() {
-
-        return (this.namespaceAware);
-
+        return this.namespaceAware;
     }
 
 
@@ -593,9 +597,7 @@ public class Digester extends DefaultHandler2 {
      * @param namespaceAware The new "namespace aware" flag
      */
     public void setNamespaceAware(boolean namespaceAware) {
-
         this.namespaceAware = namespaceAware;
-
     }
 
 
@@ -613,9 +615,7 @@ public class Digester extends DefaultHandler2 {
      * parsing under, if any.
      */
     public String getPublicId() {
-
-        return (this.publicId);
-
+        return this.publicId;
     }
 
 
@@ -627,9 +627,7 @@ public class Digester extends DefaultHandler2 {
      */
     @Deprecated
     public String getRuleNamespaceURI() {
-
-        return (getRules().getNamespaceURI());
-
+        return getRules().getNamespaceURI();
     }
 
 
@@ -645,9 +643,7 @@ public class Digester extends DefaultHandler2 {
      */
     @Deprecated
     public void setRuleNamespaceURI(String ruleNamespaceURI) {
-
         getRules().setNamespaceURI(ruleNamespaceURI);
-
     }
 
 
@@ -659,7 +655,7 @@ public class Digester extends DefaultHandler2 {
 
         // Return the parser we already created (if any)
         if (parser != null) {
-            return (parser);
+            return parser;
         }
 
         // Create a new parser
@@ -667,11 +663,10 @@ public class Digester extends DefaultHandler2 {
             parser = getFactory().newSAXParser();
         } catch (Exception e) {
             log.error("Digester.getParser: ", e);
-            return (null);
+            return null;
         }
 
-        return (parser);
-
+        return parser;
     }
 
 
@@ -692,8 +687,7 @@ public class Digester extends DefaultHandler2 {
     public Object getProperty(String property)
             throws SAXNotRecognizedException, SAXNotSupportedException {
 
-        return (getParser().getProperty(property));
-
+        return getParser().getProperty(property);
     }
 
 
@@ -704,13 +698,11 @@ public class Digester extends DefaultHandler2 {
      * @return the rules
      */
     public Rules getRules() {
-
         if (this.rules == null) {
             this.rules = new RulesBase();
             this.rules.setDigester(this);
         }
-        return (this.rules);
-
+        return this.rules;
     }
 
 
@@ -721,10 +713,8 @@ public class Digester extends DefaultHandler2 {
      * @param rules New Rules implementation
      */
     public void setRules(Rules rules) {
-
         this.rules = rules;
         this.rules.setDigester(this);
-
     }
 
 
@@ -732,9 +722,7 @@ public class Digester extends DefaultHandler2 {
      * @return the boolean as to whether the context classloader should be used.
      */
     public boolean getUseContextClassLoader() {
-
         return useContextClassLoader;
-
     }
 
 
@@ -758,9 +746,7 @@ public class Digester extends DefaultHandler2 {
      * @return the validating parser flag.
      */
     public boolean getValidating() {
-
-        return (this.validating);
-
+        return this.validating;
     }
 
 
@@ -771,9 +757,7 @@ public class Digester extends DefaultHandler2 {
      * @param validating The new validating parser flag.
      */
     public void setValidating(boolean validating) {
-
         this.validating = validating;
-
     }
 
 
@@ -781,9 +765,7 @@ public class Digester extends DefaultHandler2 {
      * @return the rules validation flag.
      */
     public boolean getRulesValidation() {
-
-        return (this.rulesValidation);
-
+        return this.rulesValidation;
     }
 
 
@@ -794,9 +776,7 @@ public class Digester extends DefaultHandler2 {
      * @param rulesValidation The new rules validation flag.
      */
     public void setRulesValidation(boolean rulesValidation) {
-
         this.rulesValidation = rulesValidation;
-
     }
 
 
@@ -804,9 +784,7 @@ public class Digester extends DefaultHandler2 {
      * @return the fake attributes list.
      */
     public Map<Class<?>, List<String>> getFakeAttributes() {
-
-        return (this.fakeAttributes);
-
+        return this.fakeAttributes;
     }
 
 
@@ -817,7 +795,6 @@ public class Digester extends DefaultHandler2 {
      * @return <code>true</code> if this is a fake attribute
      */
     public boolean isFakeAttribute(Object object, String name) {
-
         if (fakeAttributes == null) {
             return false;
         }
@@ -830,7 +807,6 @@ public class Digester extends DefaultHandler2 {
         } else {
             return result.contains(name);
         }
-
     }
 
 
@@ -862,11 +838,19 @@ public class Digester extends DefaultHandler2 {
         reader.setDTDHandler(this);
         reader.setContentHandler(this);
 
+        EntityResolver entityResolver = getEntityResolver();
         if (entityResolver == null) {
-            reader.setEntityResolver(this);
-        } else {
-            reader.setEntityResolver(entityResolver);
+            entityResolver = this;
         }
+
+        // Wrap the resolver so we can perform ${...} property replacement
+        if (entityResolver instanceof EntityResolver2) {
+            entityResolver = new EntityResolver2Wrapper((EntityResolver2) entityResolver, source, classLoader);
+        } else {
+            entityResolver = new EntityResolverWrapper(entityResolver, source, classLoader);
+        }
+
+        reader.setEntityResolver(entityResolver);
 
         reader.setProperty("http://xml.org/sax/properties/lexical-handler", this);
 
@@ -978,9 +962,9 @@ public class Digester extends DefaultHandler2 {
         List<Rule> rules = matches.pop();
         if ((rules != null) && (rules.size() > 0)) {
             String bodyText = this.bodyText.toString().intern();
-            for (int i = 0; i < rules.size(); i++) {
+            for (Rule value : rules) {
                 try {
-                    Rule rule = rules.get(i);
+                    Rule rule = value;
                     if (debug) {
                         log.debug("  Fire body() for " + rule);
                     }
@@ -1057,8 +1041,9 @@ public class Digester extends DefaultHandler2 {
         }
         try {
             stack.pop();
-            if (stack.empty())
+            if (stack.empty()) {
                 namespaces.remove(prefix);
+            }
         } catch (EmptyStackException e) {
             throw createSAXException("endPrefixMapping popped too many times");
         }
@@ -1241,9 +1226,9 @@ public class Digester extends DefaultHandler2 {
         List<Rule> rules = getRules().match(namespaceURI, match);
         matches.push(rules);
         if ((rules != null) && (rules.size() > 0)) {
-            for (int i = 0; i < rules.size(); i++) {
+            for (Rule value : rules) {
                 try {
-                    Rule rule = rules.get(i);
+                    Rule rule = value;
                     if (debug) {
                         log.debug("  Fire begin() for " + rule);
                     }
@@ -1372,7 +1357,7 @@ public class Digester extends DefaultHandler2 {
                 if (log.isDebugEnabled()) {
                     log.debug(" Cannot resolve entity: '" + publicId + "'");
                 }
-                return (null);
+                return null;
 
             } else {
                 // try to resolve using system ID
@@ -1402,7 +1387,7 @@ public class Digester extends DefaultHandler2 {
         }
 
         try {
-            return (new InputSource(entityURL));
+            return new InputSource(entityURL);
         } catch (Exception e) {
             throw createSAXException(e);
         }
@@ -1429,13 +1414,11 @@ public class Digester extends DefaultHandler2 {
      */
     @Override
     public void error(SAXParseException exception) throws SAXException {
-
         log.error("Parse Error at line " + exception.getLineNumber() + " column "
                 + exception.getColumnNumber() + ": " + exception.getMessage(), exception);
         if (errorHandler != null) {
             errorHandler.error(exception);
         }
-
     }
 
 
@@ -1449,13 +1432,11 @@ public class Digester extends DefaultHandler2 {
      */
     @Override
     public void fatalError(SAXParseException exception) throws SAXException {
-
         log.error("Parse Fatal Error at line " + exception.getLineNumber() + " column "
                 + exception.getColumnNumber() + ": " + exception.getMessage(), exception);
         if (errorHandler != null) {
             errorHandler.fatalError(exception);
         }
-
     }
 
 
@@ -1493,13 +1474,11 @@ public class Digester extends DefaultHandler2 {
      * @exception SAXException if a parsing exception occurs
      */
     public Object parse(File file) throws IOException, SAXException {
-
         configure();
         InputSource input = new InputSource(new FileInputStream(file));
         input.setSystemId("file://" + file.getAbsolutePath());
         getXMLReader().parse(input);
-        return (root);
-
+        return root;
     }
 
 
@@ -1513,11 +1492,9 @@ public class Digester extends DefaultHandler2 {
      * @exception SAXException if a parsing exception occurs
      */
     public Object parse(InputSource input) throws IOException, SAXException {
-
         configure();
         getXMLReader().parse(input);
-        return (root);
-
+        return root;
     }
 
 
@@ -1531,12 +1508,10 @@ public class Digester extends DefaultHandler2 {
      * @exception SAXException if a parsing exception occurs
      */
     public Object parse(InputStream input) throws IOException, SAXException {
-
         configure();
         InputSource is = new InputSource(input);
         getXMLReader().parse(is);
-        return (root);
-
+        return root;
     }
 
 
@@ -1609,7 +1584,6 @@ public class Digester extends DefaultHandler2 {
         setRuleNamespaceURI(newNamespaceURI);
         ruleSet.addRuleInstances(this);
         setRuleNamespaceURI(oldNamespaceURI);
-
     }
 
 
@@ -1774,14 +1748,12 @@ public class Digester extends DefaultHandler2 {
      * @return the top object
      */
     public Object peek() {
-
         try {
-            return (stack.peek());
+            return stack.peek();
         } catch (EmptyStackException e) {
             log.warn("Empty stack (returning null)");
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -1795,14 +1767,12 @@ public class Digester extends DefaultHandler2 {
      * @return the specified object
      */
     public Object peek(int n) {
-
         try {
-            return (stack.peek(n));
+            return stack.peek(n);
         } catch (EmptyStackException e) {
             log.warn("Empty stack (returning null)");
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -1812,14 +1782,12 @@ public class Digester extends DefaultHandler2 {
      * @return the top object
      */
     public Object pop() {
-
         try {
-            return (stack.pop());
+            return stack.pop();
         } catch (EmptyStackException e) {
             log.warn("Empty stack (returning null)");
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -1891,14 +1859,12 @@ public class Digester extends DefaultHandler2 {
      * @return the top object on the parameters stack
      */
     public Object peekParams() {
-
         try {
-            return (params.peek());
+            return params.peek();
         } catch (EmptyStackException e) {
             log.warn("Empty stack (returning null)");
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -1911,17 +1877,15 @@ public class Digester extends DefaultHandler2 {
      * @return the top object on the parameters stack
      */
     public Object popParams() {
-
         try {
             if (log.isTraceEnabled()) {
                 log.trace("Popping params");
             }
-            return (params.pop());
+            return params.pop();
         } catch (EmptyStackException e) {
             log.warn("Empty stack (returning null)");
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -2030,7 +1994,7 @@ public class Digester extends DefaultHandler2 {
         for (int i = 0; i < nAttributes; ++i) {
             String value = newAttrs.getValue(i);
             try {
-                newAttrs.setValue(i, IntrospectionUtils.replaceProperties(value, null, source).intern());
+                newAttrs.setValue(i, IntrospectionUtils.replaceProperties(value, null, source, getClassLoader()).intern());
             } catch (Exception e) {
                 log.warn(sm.getString("digester.failedToUpdateAttributes", newAttrs.getLocalName(i), value), e);
             }
@@ -2049,7 +2013,7 @@ public class Digester extends DefaultHandler2 {
         String in = bodyText.toString();
         String out;
         try {
-            out = IntrospectionUtils.replaceProperties(in, null, source);
+            out = IntrospectionUtils.replaceProperties(in, null, source, getClassLoader());
         } catch (Exception e) {
             return bodyText; // return unchanged data
         }
@@ -2064,4 +2028,62 @@ public class Digester extends DefaultHandler2 {
     }
 
 
+    private static class EntityResolverWrapper implements EntityResolver {
+
+        private final EntityResolver entityResolver;
+        private final PropertySource[] source;
+        private final ClassLoader classLoader;
+
+        public EntityResolverWrapper(EntityResolver entityResolver, PropertySource[] source, ClassLoader classLoader) {
+            this.entityResolver = entityResolver;
+            this.source = source;
+            this.classLoader = classLoader;
+        }
+
+        @Override
+        public InputSource resolveEntity(String publicId, String systemId)
+                throws SAXException, IOException {
+            publicId = replace(publicId);
+            systemId = replace(systemId);
+            return entityResolver.resolveEntity(publicId, systemId);
+        }
+
+        protected String replace(String input) {
+            try {
+                return IntrospectionUtils.replaceProperties(input, null, source, classLoader);
+            } catch (Exception e) {
+                return input;
+            }
+        }
+    }
+
+
+    private static class EntityResolver2Wrapper extends EntityResolverWrapper implements EntityResolver2 {
+
+        private final EntityResolver2 entityResolver2;
+
+        public EntityResolver2Wrapper(EntityResolver2 entityResolver, PropertySource[] source,
+                ClassLoader classLoader) {
+            super(entityResolver, source, classLoader);
+            this.entityResolver2 = entityResolver;
+        }
+
+        @Override
+        public InputSource getExternalSubset(String name, String baseURI)
+                throws SAXException, IOException {
+            name = replace(name);
+            baseURI = replace(baseURI);
+            return entityResolver2.getExternalSubset(name, baseURI);
+        }
+
+        @Override
+        public InputSource resolveEntity(String name, String publicId, String baseURI,
+                String systemId) throws SAXException, IOException {
+            name = replace(name);
+            publicId = replace(publicId);
+            baseURI = replace(baseURI);
+            systemId = replace(systemId);
+            return entityResolver2.resolveEntity(name, publicId, baseURI, systemId);
+        }
+    }
 }

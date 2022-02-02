@@ -27,6 +27,7 @@ import java.io.Writer;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.CompletionHandler;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.SocketFactory;
@@ -79,6 +80,7 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         Assert.assertEquals(MESSAGE, response);
 
         uc.shutdownInput();
+        pw.close();
     }
 
     private UpgradeConnection doUpgrade(
@@ -158,8 +160,9 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
                 throw new IllegalArgumentException(ioe);
             }
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            Writer writer = new OutputStreamWriter(os);
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+            Writer writer = new OutputStreamWriter(os, StandardCharsets.UTF_8);
 
             this.writer = writer;
             this.reader = reader;
@@ -223,6 +226,17 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
                 }
             }, buffer);
             System.out.println("CompletionState: " + state);
+            // Test zero length write used by websockets
+            wrapper.write(BlockingMode.BLOCK, 10, TimeUnit.SECONDS, null, SocketWrapperBase.COMPLETE_WRITE_WITH_COMPLETION, new CompletionHandler<Long, Void>() {
+                @Override
+                public void completed(Long result, Void attachment) {
+                    System.out.println("Write: " + result.longValue());
+                }
+                @Override
+                public void failed(Throwable exc, Void attachment) {
+                    exc.printStackTrace();
+                }
+            }, buffer);
         }
 
         @Override
@@ -248,9 +262,15 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
             case DISCONNECT:
             case ERROR:
             case TIMEOUT:
+            case CONNECT_FAIL:
                 return SocketState.CLOSED;
             }
             return SocketState.UPGRADED;
+        }
+
+        @Override
+        public void timeoutAsync(long now) {
+            // NO-OP
         }
 
         @Override
@@ -262,6 +282,10 @@ public class TestUpgradeInternalHandler extends TomcatBaseTest {
         public void setSslSupport(SSLSupport sslSupport) {
             // NO-OP
         }
-    }
 
+        @Override
+        public UpgradeInfo getUpgradeInfo() {
+            return null;
+        }
+    }
 }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet.jsp;
 
 import java.io.IOException;
@@ -111,8 +110,8 @@ public abstract class JspWriter extends java.io.Writer {
 
     /**
      * Write a line separator. The line separator string is defined by the
-     * system property <tt>line.separator</tt>, and is not necessarily a single
-     * newline ('\n') character.
+     * system property <code>line.separator</code>, and is not necessarily a
+     * single newline ('\n') character.
      *
      * @exception IOException
      *                If an I/O error occurs

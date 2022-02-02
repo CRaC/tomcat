@@ -36,8 +36,8 @@ import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Ensures that all extension dependencies are resolved for a WEB application
- * are met. This class builds a master list of extensions available to an
- * application and then validates those extensions.
+ * are met. This class builds a list of extensions available to an application
+ * and then validates those extensions.
  *
  * See http://docs.oracle.com/javase/1.4.2/docs/guide/extensions/spec.html
  * for a detailed explanation of the extension mechanism in Java.
@@ -344,15 +344,12 @@ public final class ExtensionValidator {
                 if (files == null) {
                     continue;
                 }
-                for (int i = 0; i < files.length; i++) {
-                    if (files[i].getName().toLowerCase(Locale.ENGLISH).endsWith(".jar") &&
-                            files[i].isFile()) {
+                for (File file : files) {
+                    if (file.getName().toLowerCase(Locale.ENGLISH).endsWith(".jar") && file.isFile()) {
                         try {
-                            addSystemResource(files[i]);
+                            addSystemResource(file);
                         } catch (IOException e) {
-                            log.error
-                                (sm.getString
-                                 ("extensionValidator.failload", files[i]), e);
+                            log.error(sm.getString("extensionValidator.failload", file), e);
                         }
                     }
                 }
@@ -360,6 +357,4 @@ public final class ExtensionValidator {
         }
 
     }
-
-
 }

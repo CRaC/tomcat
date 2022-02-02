@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.tomcat.util.modeler;
 
 import javax.management.MBeanAttributeInfo;
@@ -27,7 +26,7 @@ import javax.management.MBeanAttributeInfo;
  * @author Craig R. McClanahan
  */
 public class AttributeInfo extends FeatureInfo {
-    static final long serialVersionUID = -2511626862303972143L;
+    private static final long serialVersionUID = -2511626862303972143L;
 
     // ----------------------------------------------------- Instance Variables
     protected String displayName = null;
@@ -45,7 +44,7 @@ public class AttributeInfo extends FeatureInfo {
      * @return the display name of this attribute.
      */
     public String getDisplayName() {
-        return (this.displayName);
+        return this.displayName;
     }
 
     public void setDisplayName(String displayName) {
@@ -56,9 +55,10 @@ public class AttributeInfo extends FeatureInfo {
      * @return the name of the property getter method, if non-standard.
      */
     public String getGetMethod() {
-        if(getMethod == null)
+        if(getMethod == null) {
             getMethod = getMethodName(getName(), true, isIs());
-        return (this.getMethod);
+        }
+        return this.getMethod;
     }
 
     public void setGetMethod(String getMethod) {
@@ -71,7 +71,7 @@ public class AttributeInfo extends FeatureInfo {
      *  with an "is" getter
      */
     public boolean isIs() {
-        return (this.is);
+        return this.is;
     }
 
     public void setIs(boolean is) {
@@ -84,7 +84,7 @@ public class AttributeInfo extends FeatureInfo {
      * @return <code>true</code> if readable
      */
     public boolean isReadable() {
-        return (this.readable);
+        return this.readable;
     }
 
     public void setReadable(boolean readable) {
@@ -96,9 +96,10 @@ public class AttributeInfo extends FeatureInfo {
      * @return the name of the property setter method, if non-standard.
      */
     public String getSetMethod() {
-        if( setMethod == null )
+        if( setMethod == null ) {
             setMethod = getMethodName(getName(), false, false);
-        return (this.setMethod);
+        }
+        return this.setMethod;
     }
 
     public void setSetMethod(String setMethod) {
@@ -110,7 +111,7 @@ public class AttributeInfo extends FeatureInfo {
      * @return <code>true</code> if writable
      */
     public boolean isWriteable() {
-        return (this.writeable);
+        return this.writeable;
     }
 
     public void setWriteable(boolean writeable) {
@@ -147,19 +148,19 @@ public class AttributeInfo extends FeatureInfo {
      * @return the method name
      */
     private String getMethodName(String name, boolean getter, boolean is) {
-
         StringBuilder sb = new StringBuilder();
         if (getter) {
-            if (is)
+            if (is) {
                 sb.append("is");
-            else
+            } else {
                 sb.append("get");
-        } else
+            }
+        } else {
             sb.append("set");
+        }
         sb.append(Character.toUpperCase(name.charAt(0)));
         sb.append(name.substring(1));
-        return (sb.toString());
-
+        return sb.toString();
     }
 
 

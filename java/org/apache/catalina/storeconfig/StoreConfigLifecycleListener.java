@@ -32,8 +32,9 @@ import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Loads and registers a StoreConfig MBean with the name
- * <i>Catalina:type=StoreConfig</i>. This listener should only be used with a
- * {@link Server}.
+ * <i>Catalina:type=StoreConfig</i>.
+ * <p>
+ * This listener must only be nested within {@link Server} elements.
  */
 public class StoreConfigLifecycleListener implements LifecycleListener {
 
@@ -64,7 +65,8 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
             if (event.getSource() instanceof Server) {
                 createMBean((Server) event.getSource());
             } else {
-                log.warn(sm.getString("storeConfigListener.notServer"));
+                log.warn(sm.getString("storeConfigListener.notServer",
+                        event.getLifecycle().getClass().getSimpleName()));
             }
         } else if (Lifecycle.AFTER_STOP_EVENT.equals(event.getType())) {
             if (oname != null) {
@@ -85,12 +87,13 @@ public class StoreConfigLifecycleListener implements LifecycleListener {
             Class<?> clazz = Class.forName(getStoreConfigClass(), true, this
                     .getClass().getClassLoader());
             storeConfig = (IStoreConfig) clazz.getConstructor().newInstance();
-            if (null == getStoreRegistry())
+            if (null == getStoreRegistry()) {
                 // default Loading
                 loader.load();
-            else
+            } else {
                 // load a special file registry (url)
                 loader.load(getStoreRegistry());
+            }
             // use the loader Registry
             storeConfig.setRegistry(loader.getRegistry());
             storeConfig.setServer(server);

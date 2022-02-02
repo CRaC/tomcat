@@ -38,17 +38,17 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     private final T object;
     private PooledObjectState state = PooledObjectState.IDLE; // @GuardedBy("this") to ensure transitions are valid
-    private final long createTime = System.currentTimeMillis();
-    private volatile long lastBorrowTime = createTime;
-    private volatile long lastUseTime = createTime;
-    private volatile long lastReturnTime = createTime;
+    private final long createTimeMillis = System.currentTimeMillis();
+    private volatile long lastBorrowTimeMillis = createTimeMillis;
+    private volatile long lastUseTimeMillis = createTimeMillis;
+    private volatile long lastReturnTimeMillis = createTimeMillis;
     private volatile boolean logAbandoned = false;
     private volatile CallStack borrowedBy = NoOpCallStack.INSTANCE;
     private volatile CallStack usedBy = NoOpCallStack.INSTANCE;
     private volatile long borrowedCount = 0;
 
     /**
-     * Create a new instance that wraps the provided object so that the pool can
+     * Creates a new instance that wraps the provided object so that the pool can
      * track the state of the pooled object.
      *
      * @param object The object to wrap
@@ -64,14 +64,14 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     @Override
     public long getCreateTime() {
-        return createTime;
+        return createTimeMillis;
     }
 
     @Override
     public long getActiveTimeMillis() {
         // Take copies to avoid threading issues
-        final long rTime = lastReturnTime;
-        final long bTime = lastBorrowTime;
+        final long rTime = lastReturnTimeMillis;
+        final long bTime = lastBorrowTimeMillis;
 
         if (rTime > bTime) {
             return rTime - bTime;
@@ -81,7 +81,7 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     @Override
     public long getIdleTimeMillis() {
-        final long elapsed = System.currentTimeMillis() - lastReturnTime;
+        final long elapsed = System.currentTimeMillis() - lastReturnTimeMillis;
         // elapsed may be negative if:
         // - another thread updates lastReturnTime during the calculation window
         // - System.currentTimeMillis() is not monotonic (e.g. system time is set back)
@@ -90,25 +90,26 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     @Override
     public long getLastBorrowTime() {
-        return lastBorrowTime;
+        return lastBorrowTimeMillis;
     }
 
     @Override
     public long getLastReturnTime() {
-        return lastReturnTime;
+        return lastReturnTimeMillis;
     }
 
     /**
-     * Get the number of times this object has been borrowed.
+     * Gets the number of times this object has been borrowed.
      * @return The number of times this object has been borrowed.
      * @since 2.1
      */
+    @Override
     public long getBorrowedCount() {
         return borrowedCount;
     }
 
     /**
-     * Return an estimate of the last time this object was used.  If the class
+     * Returns an estimate of the last time this object was used.  If the class
      * of the pooled object implements {@link TrackedUse}, what is returned is
      * the maximum of {@link TrackedUse#getLastUsed()} and
      * {@link #getLastBorrowTime()}; otherwise this method gives the same
@@ -119,9 +120,9 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
     @Override
     public long getLastUsedTime() {
         if (object instanceof TrackedUse) {
-            return Math.max(((TrackedUse) object).getLastUsed(), lastUseTime);
+            return Math.max(((TrackedUse) object).getLastUsed(), lastUseTimeMillis);
         }
-        return lastUseTime;
+        return lastUseTimeMillis;
     }
 
     @Override
@@ -186,8 +187,8 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
     public synchronized boolean allocate() {
         if (state == PooledObjectState.IDLE) {
             state = PooledObjectState.ALLOCATED;
-            lastBorrowTime = System.currentTimeMillis();
-            lastUseTime = lastBorrowTime;
+            lastBorrowTimeMillis = System.currentTimeMillis();
+            lastUseTimeMillis = lastBorrowTimeMillis;
             borrowedCount++;
             if (logAbandoned) {
                 borrowedBy.fillInStackTrace();
@@ -205,16 +206,18 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     /**
      * Deallocates the object and sets it {@link PooledObjectState#IDLE IDLE}
-     * if it is currently {@link PooledObjectState#ALLOCATED ALLOCATED}.
+     * if it is currently {@link PooledObjectState#ALLOCATED ALLOCATED}
+     * or {@link PooledObjectState#RETURNING RETURNING}.
      *
      * @return {@code true} if the state was {@link PooledObjectState#ALLOCATED ALLOCATED}
+     *         or {@link PooledObjectState#RETURNING RETURNING}.
      */
     @Override
     public synchronized boolean deallocate() {
         if (state == PooledObjectState.ALLOCATED ||
                 state == PooledObjectState.RETURNING) {
             state = PooledObjectState.IDLE;
-            lastReturnTime = System.currentTimeMillis();
+            lastReturnTimeMillis = System.currentTimeMillis();
             borrowedBy.clear();
             return true;
         }
@@ -232,7 +235,7 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
 
     @Override
     public void use() {
-        lastUseTime = System.currentTimeMillis();
+        lastUseTimeMillis = System.currentTimeMillis();
         usedBy.fillInStackTrace();
     }
 
@@ -285,8 +288,7 @@ public class DefaultPooledObject<T> implements PooledObject<T> {
      *                              logging
      * @since 2.5
      */
-    // TODO: uncomment below in 3.0
-    // @Override
+    @Override
     public void setRequireFullStackTrace(final boolean requireFullStackTrace) {
         borrowedBy = CallStackUtils.newCallStack("'Pooled object created' " +
             "yyyy-MM-dd HH:mm:ss Z 'by the following code has not been returned to the pool:'",

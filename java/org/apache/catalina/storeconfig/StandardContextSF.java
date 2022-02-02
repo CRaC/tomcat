@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.File;
@@ -77,11 +76,12 @@ public class StandardContextSF extends StoreFactoryBase {
                         .getConfigFile();
                 if (configFile != null) {
                     if (desc.isExternalAllowed()) {
-                        if (desc.isBackup())
+                        if (desc.isBackup()) {
                             storeWithBackup((StandardContext) aContext);
-                        else
+                        } else {
                             storeContextSeparate(aWriter, indent,
                                     (StandardContext) aContext);
+                        }
                         return;
                     }
                 } else if (desc.isExternalOnly()) {
@@ -93,11 +93,12 @@ public class StandardContextSF extends StoreFactoryBase {
                     String baseName = cn.getBaseName();
                     File xml = new File(configBase, baseName + ".xml");
                     context.setConfigFile(xml.toURI().toURL());
-                    if (desc.isBackup())
+                    if (desc.isBackup()) {
                         storeWithBackup((StandardContext) aContext);
-                    else
+                    } else {
                         storeContextSeparate(aWriter, indent,
                                 (StandardContext) aContext);
+                    }
                     return;
                 }
             }
@@ -131,9 +132,10 @@ public class StandardContextSF extends StoreFactoryBase {
                                       + configFile
                                       + " not a file, or not writable.");
             }
-            if (log.isInfoEnabled())
+            if (log.isInfoEnabled()) {
                 log.info("Store Context " + aContext.getPath()
                         + " separate at file " + config);
+            }
             try (FileOutputStream fos = new FileOutputStream(config);
                     PrintWriter writer = new PrintWriter(new OutputStreamWriter(
                             fos , getRegistry().getEncoding()))) {
@@ -172,10 +174,11 @@ public class StandardContextSF extends StoreFactoryBase {
                 throw new IOException("Context save file at "
                         + mover.getConfigSave() + " is not writable.");
             }
-            if (log.isInfoEnabled())
+            if (log.isInfoEnabled()) {
                 log.info("Store Context " + aContext.getPath()
                         + " separate with backup (at file "
                         + mover.getConfigSave() + " )");
+            }
 
             try (PrintWriter writer = mover.getWriter()) {
                 storeXMLHead(writer);
@@ -320,7 +323,7 @@ public class StandardContextSF extends StoreFactoryBase {
                 log.error(e);
             }
         }
-        return (file);
+        return file;
 
     }
 
@@ -349,21 +352,25 @@ public class StandardContextSF extends StoreFactoryBase {
         String webxml = "WEB-INF/web.xml" ;
 
         List<String> resource = new ArrayList<>();
-        for (int i = 0; i < wresources.length; i++) {
-
-            if (wresources[i].equals(confContext))
+        for (String wresource : wresources) {
+            if (wresource.equals(confContext)) {
                 continue;
-            if (wresources[i].equals(confWeb))
+            }
+            if (wresource.equals(confWeb)) {
                 continue;
-            if (wresources[i].equals(confHostDefault))
+            }
+            if (wresource.equals(confHostDefault)) {
                 continue;
-            if (wresources[i].equals(configFile))
+            }
+            if (wresource.equals(configFile)) {
                 continue;
-            if (wresources[i].equals(webxml))
+            }
+            if (wresource.equals(webxml)) {
                 continue;
-            resource.add(wresources[i]);
+            }
+            resource.add(wresource);
         }
-        return resource.toArray(new String[resource.size()]);
+        return resource.toArray(new String[0]);
     }
 
 }

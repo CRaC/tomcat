@@ -38,7 +38,7 @@ public class MessageDestinationRef extends ResourceBase {
     private String link = null;
 
     public String getLink() {
-        return (this.link);
+        return this.link;
     }
 
     public void setLink(String link) {
@@ -52,7 +52,7 @@ public class MessageDestinationRef extends ResourceBase {
     private String usage = null;
 
     public String getUsage() {
-        return (this.usage);
+        return this.usage;
     }
 
     public void setUsage(String usage) {
@@ -67,7 +67,6 @@ public class MessageDestinationRef extends ResourceBase {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("MessageDestination[");
         sb.append("name=");
         sb.append(getName());
@@ -87,8 +86,8 @@ public class MessageDestinationRef extends ResourceBase {
             sb.append(", description=");
             sb.append(getDescription());
         }
-        sb.append("]");
-        return (sb.toString());
+        sb.append(']');
+        return sb.toString();
     }
 
 

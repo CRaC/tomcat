@@ -27,12 +27,12 @@ import org.apache.tomcat.util.buf.UDecoder;
  *
  * @author Craig R. McClanahan
  */
-public class ErrorPage implements Serializable {
+public class ErrorPage extends XmlEncodingBase implements Serializable {
 
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 2L;
+
 
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * The error (status) code for which this error page is active. Note that
@@ -60,9 +60,7 @@ public class ErrorPage implements Serializable {
      * @return the error code.
      */
     public int getErrorCode() {
-
-        return (this.errorCode);
-
+        return this.errorCode;
     }
 
 
@@ -72,9 +70,7 @@ public class ErrorPage implements Serializable {
      * @param errorCode The new error code
      */
     public void setErrorCode(int errorCode) {
-
         this.errorCode = errorCode;
-
     }
 
 
@@ -97,9 +93,7 @@ public class ErrorPage implements Serializable {
      * @return the exception type.
      */
     public String getExceptionType() {
-
-        return (this.exceptionType);
-
+        return this.exceptionType;
     }
 
 
@@ -109,9 +103,7 @@ public class ErrorPage implements Serializable {
      * @param exceptionType The new exception type
      */
     public void setExceptionType(String exceptionType) {
-
         this.exceptionType = exceptionType;
-
     }
 
 
@@ -119,9 +111,7 @@ public class ErrorPage implements Serializable {
      * @return the location.
      */
     public String getLocation() {
-
-        return (this.location);
-
+        return this.location;
     }
 
 
@@ -135,7 +125,7 @@ public class ErrorPage implements Serializable {
         //        if ((location == null) || !location.startsWith("/"))
         //            throw new IllegalArgumentException
         //                ("Error Page Location must start with a '/'");
-        this.location = UDecoder.URLDecode(location);
+        this.location = UDecoder.URLDecode(location, getCharset());
 
     }
 
@@ -148,7 +138,6 @@ public class ErrorPage implements Serializable {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ErrorPage[");
         if (exceptionType == null) {
             sb.append("errorCode=");
@@ -159,9 +148,8 @@ public class ErrorPage implements Serializable {
         }
         sb.append(", location=");
         sb.append(location);
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
     public String getName() {

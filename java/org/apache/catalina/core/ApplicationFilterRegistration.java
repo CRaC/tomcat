@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -32,14 +32,12 @@ import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.descriptor.web.FilterMap;
 import org.apache.tomcat.util.res.StringManager;
 
-public class ApplicationFilterRegistration
-        implements FilterRegistration.Dynamic {
+public class ApplicationFilterRegistration implements FilterRegistration.Dynamic {
 
     /**
      * The string manager for this package.
      */
-    private static final StringManager sm =
-      StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(ApplicationFilterRegistration.class);
 
     private final FilterDef filterDef;
     private final Context context;
@@ -119,9 +117,7 @@ public class ApplicationFilterRegistration
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                for (String servletName : filterMap.getServletNames()) {
-                    result.add(servletName);
-                }
+                result.addAll(Arrays.asList(filterMap.getServletNames()));
             }
         }
         return result;
@@ -135,9 +131,7 @@ public class ApplicationFilterRegistration
 
         for (FilterMap filterMap : filterMaps) {
             if (filterMap.getFilterName().equals(filterDef.getFilterName())) {
-                for (String urlPattern : filterMap.getURLPatterns()) {
-                    result.add(urlPattern);
-                }
+                result.addAll(Arrays.asList(filterMap.getURLPatterns()));
             }
         }
         return result;

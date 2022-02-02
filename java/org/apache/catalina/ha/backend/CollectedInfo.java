@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ha.backend;
 
 /* for MBean to read ready and busy */
@@ -27,6 +25,7 @@ import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
 import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomcat.util.res.StringManager;
 
 /*
  * Listener to provider informations to mod_heartbeat.c
@@ -36,6 +35,8 @@ import org.apache.tomcat.util.modeler.Registry;
  * BTW:v  = version :-)
  */
 public class CollectedInfo {
+
+    private static final StringManager sm = StringManager.getManager(CollectedInfo.class);
 
     /* Collect info via JMX */
     protected MBeanServer mBeanServer = null;
@@ -72,15 +73,20 @@ public class CollectedInfo {
             String [] shosts = elenames[1].split("%2F");
             shost = shosts[0];
 
-            if (port==0 && host==null)
-                  break; /* Take the first one */
-            if (host==null && iport==port)
+            if (port==0 && host==null) {
+                break; /* Done: take the first one */
+            }
+            if (host==null && iport==port) {
                 break; /* Only port done */
-            if (shost.compareTo(host) == 0)
+            }
+            if (shost.compareTo(host) == 0) {
                 break; /* Done port and host are the expected ones */
+            }
         }
-        if (objName == null)
-            throw(new Exception("Can't find connector for " + host + ":" + port));
+        if (objName == null) {
+            throw new Exception(sm.getString("collectedInfo.noConnector",
+                    host, Integer.valueOf(port)));
+        }
         this.port = iport;
         this.host = shost;
 
@@ -88,7 +94,7 @@ public class CollectedInfo {
 
     public void refresh() throws Exception {
         if (mBeanServer == null || objName == null) {
-            throw(new Exception("Not initialized!!!"));
+            throw new Exception(sm.getString("collectedInfo.notInitialized"));
         }
         Integer imax = (Integer) mBeanServer.getAttribute(objName, "maxThreads");
 

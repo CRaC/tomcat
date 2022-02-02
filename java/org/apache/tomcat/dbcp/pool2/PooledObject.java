@@ -24,6 +24,7 @@ import java.util.Deque;
  * state, for the pooled objects.
  * <p>
  * Implementations of this class are required to be thread-safe.
+ * </p>
  *
  * @param <T> the type of object in the pool
  *
@@ -55,6 +56,14 @@ public interface PooledObject<T> extends Comparable<PooledObject<T>> {
      * @return The time in milliseconds last spent in the active state
      */
     long getActiveTimeMillis();
+
+    /**
+     * Gets the number of times this object has been borrowed.
+     *
+     * @return The number of times this object has been borrowed.
+     * @since 2.7.0
+     */
+    long getBorrowedCount();
 
     /**
      * Obtains the time in milliseconds that this object last spend in the
@@ -123,9 +132,9 @@ public interface PooledObject<T> extends Comparable<PooledObject<T>> {
      * Attempts to place the pooled object in the
      * {@link PooledObjectState#EVICTION} state.
      *
-     * @return <code>true</code> if the object was placed in the
+     * @return {@code true} if the object was placed in the
      *         {@link PooledObjectState#EVICTION} state otherwise
-     *         <code>false</code>
+     *         {@code false}
      */
     boolean startEvictionTest();
 
@@ -169,17 +178,15 @@ public interface PooledObject<T> extends Comparable<PooledObject<T>> {
      */
     void setLogAbandoned(boolean logAbandoned);
 
-// TODO: uncomment in 3.0 (API compatibility)
-//    /**
-//     * Configures the stack trace generation strategy based on whether or not fully
-//     * detailed stack traces are required. When set to false, abandoned logs may
-//     * only include caller class information rather than method names, line numbers,
-//     * and other normal metadata available in a full stack trace.
-//     *
-//     * @param requireFullStackTrace the new configuration setting for abandoned object
-//     *                              logging
-//     */
-//    void setRequireFullStackTrace(boolean requireFullStackTrace);
+    /**
+     * Configures the stack trace generation strategy based on whether or not fully detailed stack traces are required.
+     * When set to false, abandoned logs may only include caller class information rather than method names, line
+     * numbers, and other normal metadata available in a full stack trace.
+     *
+     * @param requireFullStackTrace the new configuration setting for abandoned object logging
+     * @since 2.7.0
+     */
+    void setRequireFullStackTrace(final boolean requireFullStackTrace);
 
     /**
      * Record the current stack trace as the last time the object was used.
@@ -210,11 +217,4 @@ public interface PooledObject<T> extends Comparable<PooledObject<T>> {
      * Marks the object as returning to the pool.
      */
     void markReturning();
-
-    // TODO: Uncomment this for version 3 (can't add it to 2.x as it will break
-    //       API compatibility)
-    ///**
-    // * Get the number of times this object has been borrowed.
-    // */
-    //long getBorrowedCount();
 }

@@ -118,48 +118,46 @@ public abstract class AbstractJsseEndpoint<S> extends AbstractEndpoint<S> {
         }
 
         SSLEngine engine = sslContext.createSSLEngine();
-        switch (sslHostConfig.getCertificateVerification()) {
-        case NONE:
-            engine.setNeedClientAuth(false);
-            engine.setWantClientAuth(false);
-            break;
-        case OPTIONAL:
-        case OPTIONAL_NO_CA:
-            engine.setWantClientAuth(true);
-            break;
-        case REQUIRED:
-            engine.setNeedClientAuth(true);
-            break;
-        }
         engine.setUseClientMode(false);
         engine.setEnabledCipherSuites(sslHostConfig.getEnabledCiphers());
         engine.setEnabledProtocols(sslHostConfig.getEnabledProtocols());
 
+        SSLParameters sslParameters = engine.getSSLParameters();
         String honorCipherOrderStr = sslHostConfig.getHonorCipherOrder();
         if (honorCipherOrderStr != null) {
             boolean honorCipherOrder = Boolean.parseBoolean(honorCipherOrderStr);
-            JreCompat.getInstance().setUseServerCipherSuitesOrder(engine, honorCipherOrder);
+            JreCompat.getInstance().setUseServerCipherSuitesOrder(sslParameters, honorCipherOrder);
         }
 
-        if (JreCompat.isJre9Available() && clientRequestedApplicationProtocols != null
+        if (JreCompat.isAlpnSupported() && clientRequestedApplicationProtocols != null
                 && clientRequestedApplicationProtocols.size() > 0
                 && negotiableProtocols.size() > 0) {
-            SSLParameters sslParameters = engine.getSSLParameters();
             // Only try to negotiate if both client and server have at least
             // one protocol in common
             // Note: Tomcat does not explicitly negotiate http/1.1
             // TODO: Is this correct? Should it change?
-            List<String> commonProtocols = new ArrayList<>();
-            commonProtocols.addAll(negotiableProtocols);
+            List<String> commonProtocols = new ArrayList<>(negotiableProtocols);
             commonProtocols.retainAll(clientRequestedApplicationProtocols);
             if (commonProtocols.size() > 0) {
-                String[] commonProtocolsArray = commonProtocols.toArray(new String[commonProtocols.size()]);
+                String[] commonProtocolsArray = commonProtocols.toArray(new String[0]);
                 JreCompat.getInstance().setApplicationProtocols(sslParameters, commonProtocolsArray);
             }
-
-            // In case the getter returns a defensive copy
-            engine.setSSLParameters(sslParameters);
         }
+        switch (sslHostConfig.getCertificateVerification()) {
+        case NONE:
+            sslParameters.setNeedClientAuth(false);
+            sslParameters.setWantClientAuth(false);
+            break;
+        case OPTIONAL:
+        case OPTIONAL_NO_CA:
+            sslParameters.setWantClientAuth(true);
+            break;
+        case REQUIRED:
+            sslParameters.setNeedClientAuth(true);
+            break;
+        }
+        // The getter (at least in OpenJDK and derivatives) returns a defensive copy
+        engine.setSSLParameters(sslParameters);
 
         return engine;
     }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.servlet;
 
 import java.io.FileNotFoundException;
@@ -81,9 +80,9 @@ public class JspServletWrapper {
     // Logger
     private final Log log = LogFactory.getLog(JspServletWrapper.class); // must not be static
 
-    private Servlet theServlet;
+    private volatile Servlet theServlet;
     private final String jspUri;
-    private Class<?> tagHandlerClass;
+    private volatile Class<?> tagHandlerClass;
     private final JspCompilationContext ctxt;
     private long available = 0L;
     private final ServletConfig config;
@@ -417,20 +416,10 @@ public class JspServletWrapper {
                 return;
             }
 
-        } catch (ServletException ex) {
-            if (options.getDevelopment()) {
-                throw handleJspException(ex);
-            }
-            throw ex;
         } catch (FileNotFoundException fnfe) {
             // File has been removed. Let caller handle this.
             throw fnfe;
-        } catch (IOException ex) {
-            if (options.getDevelopment()) {
-                throw handleJspException(ex);
-            }
-            throw ex;
-        } catch (IllegalStateException ex) {
+        } catch (ServletException | IOException | IllegalStateException ex) {
             if (options.getDevelopment()) {
                 throw handleJspException(ex);
             }
@@ -494,7 +483,7 @@ public class JspServletWrapper {
             response.sendError
                 (HttpServletResponse.SC_SERVICE_UNAVAILABLE,
                  ex.getMessage());
-        } catch (ServletException ex) {
+        } catch (ServletException | IllegalStateException ex) {
             if(options.getDevelopment()) {
                 throw handleJspException(ex);
             }
@@ -502,11 +491,6 @@ public class JspServletWrapper {
         } catch (IOException ex) {
             if (options.getDevelopment()) {
                 throw new IOException(handleJspException(ex).getMessage(), ex);
-            }
-            throw ex;
-        } catch (IllegalStateException ex) {
-            if(options.getDevelopment()) {
-                throw handleJspException(ex);
             }
             throw ex;
         } catch (Exception ex) {

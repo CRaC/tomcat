@@ -28,7 +28,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Base class for a SocketChannel wrapper used by the endpoint.
- * This way, logic for a SSL socket channel remains the same as for
+ * This way, logic for an SSL socket channel remains the same as for
  * a non SSL, making sure we don't need to code for any exception cases.
  */
 public class Nio2Channel implements AsynchronousByteChannel {
@@ -98,7 +98,7 @@ public class Nio2Channel implements AsynchronousByteChannel {
     /**
      * Tells whether or not this channel is open.
      *
-     * @return <tt>true</tt> if, and only if, this channel is open
+     * @return <code>true</code> if, and only if, this channel is open
      */
     @Override
     public boolean isOpen() {

@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
+import java.nio.channels.CompletionHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,8 +29,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import javax.net.ssl.KeyManager;
@@ -68,9 +72,6 @@ import org.apache.tomcat.util.net.openssl.OpenSSLUtil;
  * <li>Worker threads pool</li>
  * </ul>
  *
- * When switching to Java 5, there's an opportunity to use the virtual
- * machine's thread pool.
- *
  * @author Mladen Turk
  * @author Remy Maucherat
  */
@@ -106,12 +107,21 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
     protected long sslContext = 0;
 
 
+    private int previousAcceptedPort = -1;
+    private String previousAcceptedAddress = null;
+
+
     private final Map<Long,AprSocketWrapper> connections = new ConcurrentHashMap<>();
 
 
     // ------------------------------------------------------------ Constructor
 
     public AprEndpoint() {
+        // Asynchronous IO has significantly lower performance with APR:
+        // - no IO vectoring
+        // - mandatory use of direct buffers forces output buffering
+        // - needs extra output flushes due to buffering
+        setUseAsyncIO(false);
         // Need to override the default for maxConnections to align it with what
         // was pollerSize (before the two were merged)
         setMaxConnections(8 * 1024);
@@ -290,38 +300,32 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
 
         // Create the pool for the server socket
         serverSockPool = Pool.create(rootPool);
+
         // Create the APR address that will be bound
         String addressStr = null;
         if (getAddress() != null) {
             addressStr = getAddress().getHostAddress();
         }
-        int family = Socket.APR_INET;
-        if (Library.APR_HAVE_IPV6) {
-            if (addressStr == null) {
-                if (!OS.IS_BSD) {
-                    family = Socket.APR_UNSPEC;
-                }
-            } else if (addressStr.indexOf(':') >= 0) {
-                family = Socket.APR_UNSPEC;
-            }
-         }
+        int family = Socket.APR_UNSPEC;
 
         long inetAddress = Address.info(addressStr, family,
                 getPort(), 0, rootPool);
         // Create the APR server socket
-        serverSock = Socket.create(Address.getInfo(inetAddress).family,
+        int saFamily = Address.getInfo(inetAddress).family;
+        serverSock = Socket.create(saFamily,
                 Socket.SOCK_STREAM,
                 Socket.APR_PROTO_TCP, rootPool);
         if (OS.IS_UNIX) {
             Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
         }
-        if (Library.APR_HAVE_IPV6) {
+        if (Library.APR_HAVE_IPV6 && saFamily == Socket.APR_INET6) {
             if (getIpv6v6only()) {
                 Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 1);
             } else {
                 Socket.optSet(serverSock, Socket.APR_IPV6_V6ONLY, 0);
             }
         }
+
         // Deal with the firewalls that tend to drop the inactive sockets
         Socket.optSet(serverSock, Socket.APR_SO_KEEPALIVE, 1);
         // Bind the server socket
@@ -329,11 +333,13 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         if (ret != 0) {
             throw new Exception(sm.getString("endpoint.init.bind", "" + ret, Error.strerror(ret)));
         }
+
         // Start listening on the server socket
         ret = Socket.listen(serverSock, getAcceptCount());
         if (ret != 0) {
             throw new Exception(sm.getString("endpoint.init.listen", "" + ret, Error.strerror(ret)));
         }
+
         if (OS.IS_WIN32 || OS.IS_WIN64) {
             // On Windows set the reuseaddr flag after the bind/listen
             Socket.optSet(serverSock, Socket.APR_SO_REUSEADDR, 1);
@@ -345,12 +351,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             setUseSendfileInternal(Library.APR_HAS_SENDFILE);
         } else if (getUseSendfile() && !Library.APR_HAS_SENDFILE) {
             setUseSendfileInternal(false);
-        }
-
-        // Initialize thread count default for acceptor
-        if (acceptorThreadCount == 0) {
-            // FIXME: Doesn't seem to work that well with multiple accept threads
-            acceptorThreadCount = 1;
         }
 
         // Delay accepting of new connections until data is available
@@ -465,20 +465,13 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             // Start poller thread
             poller = new Poller();
             poller.init();
-            Thread pollerThread = new Thread(poller, getName() + "-Poller");
-            pollerThread.setPriority(threadPriority);
-            pollerThread.setDaemon(true);
-            pollerThread.start();
+            poller.start();
 
             // Start sendfile thread
             if (getUseSendfile()) {
                 sendfile = new Sendfile();
                 sendfile.init();
-                Thread sendfileThread =
-                        new Thread(sendfile, getName() + "-Sendfile");
-                sendfileThread.setPriority(threadPriority);
-                sendfileThread.setDaemon(true);
-                sendfileThread.start();
+                sendfile.start();
             }
 
             startAcceptorThreads();
@@ -497,14 +490,17 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         }
         if (running) {
             running = false;
+
+            // Stop the Poller calling select
             poller.stop();
-            for (SocketWrapperBase<Long> socketWrapper : connections.values()) {
-                try {
-                    socketWrapper.close();
-                } catch (IOException e) {
-                    // Ignore
-                }
+
+            if (getUseSendfile()) {
+                sendfile.stop();
             }
+
+            // Wait for the acceptor to shutdown.
+            // Should only be one thread but retain this code in case the
+            // acceptor start has been customised.
             for (AbstractEndpoint.Acceptor acceptor : acceptors) {
                 long waitLeft = 10000;
                 while (waitLeft > 0 &&
@@ -528,13 +524,65 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                    }
                 }
             }
+
+            // Wait for Poller to stop
+            int waitMillis = 0;
             try {
-                poller.destroy();
-            } catch (Exception e) {
+                while (poller.pollerThread.isAlive() && waitMillis < 10000) {
+                    waitMillis++;
+                    Thread.sleep(1);
+                }
+            } catch (InterruptedException e) {
                 // Ignore
             }
-            poller = null;
-            connections.clear();
+
+            if (getUseSendfile()) {
+                try {
+                    // Wait for the sendfile thread to exit, otherwise parallel
+                    // destruction of sockets which are still in the poller can cause
+                    // problems.
+                    waitMillis = 0;
+                    try {
+                        while (sendfile.sendfileThread.isAlive() && waitMillis < 10000) {
+                            waitMillis++;
+                            Thread.sleep(1);
+                        }
+                    } catch (InterruptedException e) {
+                        // Ignore
+                    }
+
+                    if (sendfile.sendfileThread.isAlive()) {
+                        log.warn(sm.getString("endpoint.sendfileThreadStop"));
+                    }
+                } catch (Exception e) {
+                    // Ignore
+                }
+            }
+
+            // Close the SocketWrapper for each open connection - this should
+            // trigger a IOException when the app (or container) tries to write.
+            // Use the blocking status write lock as a proxy for a lock on
+            // writing to the socket. Don't want to close it while another
+            // thread is writing as that could trigger a JVM crash.
+            for (SocketWrapperBase<Long> socketWrapper : connections.values()) {
+                WriteLock wl = ((AprSocketWrapper) socketWrapper).getBlockingStatusWriteLock();
+                wl.lock();
+                try {
+                    socketWrapper.close();
+                } catch (IOException e) {
+                    // Ignore
+                } finally {
+                    wl.unlock();
+                }
+            }
+
+            for (Long socket : connections.keySet()) {
+                // Close the APR Socket. Need to do this before destroying the
+                // poller since that will also destroy the root pool for these
+                // sockets.
+                Socket.shutdown(socket.longValue(), Socket.APR_SHUTDOWN_READWRITE);
+            }
+
             if (getUseSendfile()) {
                 try {
                     sendfile.destroy();
@@ -543,7 +591,18 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 }
                 sendfile = null;
             }
-            processorCache.clear();
+
+            try {
+                poller.destroy();
+            } catch (Exception e) {
+                // Ignore
+            }
+            poller = null;
+            connections.clear();
+            if (processorCache != null) {
+                processorCache.clear();
+                processorCache = null;
+            }
         }
         shutdownExecutor();
     }
@@ -609,21 +668,38 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         try {
 
             // 1: Set socket options: timeout, linger, etc
-            if (socketProperties.getSoLingerOn() && socketProperties.getSoLingerTime() >= 0)
+            if (socketProperties.getSoLingerOn() && socketProperties.getSoLingerTime() >= 0) {
                 Socket.optSet(socket, Socket.APR_SO_LINGER, socketProperties.getSoLingerTime());
-            if (socketProperties.getTcpNoDelay())
+            }
+            if (socketProperties.getTcpNoDelay()) {
                 Socket.optSet(socket, Socket.APR_TCP_NODELAY, (socketProperties.getTcpNoDelay() ? 1 : 0));
+            }
             Socket.timeoutSet(socket, socketProperties.getSoTimeout() * 1000);
 
             // 2: SSL handshake
             step = 2;
             if (sslContext != 0) {
-                SSLSocket.attach(sslContext, socket);
-                if (SSLSocket.handshake(socket) != 0) {
-                    if (log.isDebugEnabled()) {
-                        log.debug(sm.getString("endpoint.err.handshake") + ": " + SSL.getLastError());
-                    }
+                int rv = SSLSocket.attach(sslContext, socket);
+                if (rv != Status.APR_SUCCESS) {
+                    log.warn(sm.getString("endpoint.err.attach", Integer.valueOf(rv)));
                     return false;
+                }
+
+                // Need to make sure the socket doesn't get closed while the
+                // handshake is in progress as that could trigger a JVM crash.
+                // Like stopInternal(), use the blocking status write lock as a
+                // proxy for a lock on writing to the socket.
+                WriteLock wl = ((AprSocketWrapper) socketWrapper).getBlockingStatusWriteLock();
+                wl.lock();
+                try {
+                    if (SSLSocket.handshake(socket) != 0) {
+                        if (log.isDebugEnabled()) {
+                            log.debug(sm.getString("endpoint.err.handshake") + ": " + SSL.getLastError());
+                        }
+                        return false;
+                    }
+                } finally {
+                    wl.unlock();
                 }
 
                 if (negotiableProtocols.size() > 0) {
@@ -668,10 +744,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         } catch (Error e) {
             if (Status.APR_STATUS_IS_EINVAL(e.getError())) {
                 log.info(sm.getString("endpoint.poll.limitedpollsize", "" + size));
-                return 0;
+                throw new RuntimeException(e);
             } else {
                 log.error(sm.getString("endpoint.poll.initfail"), e);
-                return -1;
+                throw new RuntimeException(e);
             }
         }
     }
@@ -692,9 +768,19 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     log.debug(sm.getString("endpoint.debug.socket",
                             Long.valueOf(socket)));
                 }
+
+                // Do the duplicate accept check here rather than in Acceptor.run()
+                // so we can cache the results in the SocketWrapper
                 AprSocketWrapper wrapper = new AprSocketWrapper(Long.valueOf(socket), this);
+                if (wrapper.getRemotePort() == previousAcceptedPort) {
+                    if (wrapper.getRemoteAddr().equals(previousAcceptedAddress)) {
+                        throw new IOException(sm.getString("endpoint.err.duplicateAccept"));
+                    }
+                }
+                previousAcceptedPort = wrapper.getRemotePort();
+                previousAcceptedAddress = wrapper.getRemoteAddr();
+
                 wrapper.setKeepAliveLeft(getMaxKeepAliveRequests());
-                wrapper.setSecure(isSSLEnabled());
                 wrapper.setReadTimeout(getConnectionTimeout());
                 wrapper.setWriteTimeout(getConnectionTimeout());
                 connections.put(Long.valueOf(socket), wrapper);
@@ -726,6 +812,11 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
      */
     protected boolean processSocket(long socket, SocketEvent event) {
         SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(socket));
+        if (socketWrapper == null) {
+            // Socket probably closed from another thread. Triggering another
+            // close in case won't cause an issue.
+            return false;
+        }
         return processSocket(socketWrapper, event, true);
     }
 
@@ -791,17 +882,40 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         public void run() {
 
             int errorDelay = 0;
+            long pauseStart = 0;
 
             // Loop until we receive a shutdown command
             while (running) {
 
-                // Loop if endpoint is paused
+                // Loop if endpoint is paused.
+                // There are two likely scenarios here.
+                // The first scenario is that Tomcat is shutting down. In this
+                // case - and particularly for the unit tests - we want to exit
+                // this loop as quickly as possible. The second scenario is a
+                // genuine pause of the connector. In this case we want to avoid
+                // excessive CPU usage.
+                // Therefore, we start with a tight loop but if there isn't a
+                // rapid transition to stop then sleeps are introduced.
+                // < 1ms       - tight loop
+                // 1ms to 10ms - 1ms sleep
+                // > 10ms      - 10ms sleep
                 while (paused && running) {
-                    state = AcceptorState.PAUSED;
-                    try {
-                        Thread.sleep(50);
-                    } catch (InterruptedException e) {
-                        // Ignore
+                    if (state != AcceptorState.PAUSED) {
+                        pauseStart = System.nanoTime();
+                        // Entered pause state
+                        state = AcceptorState.PAUSED;
+                    }
+                    if ((System.nanoTime() - pauseStart) > 1_000_000) {
+                        // Paused for more than 1ms
+                        try {
+                            if ((System.nanoTime() - pauseStart) > 10_000_000) {
+                                Thread.sleep(10);
+                            } else {
+                                Thread.sleep(1);
+                            }
+                        } catch (InterruptedException e) {
+                            // Ignore
+                        }
                     }
                 }
 
@@ -818,7 +932,12 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     try {
                         // Accept the next incoming connection from the server
                         // socket
+                        // See processSocketWithOptions(long) for duplicate
+                        // accept check
                         socket = Socket.accept(serverSock);
+                        if (socket == 0) {
+                            throw new IOException(sm.getString("endpoint.err.accept", getName()));
+                        }
                         if (log.isDebugEnabled()) {
                             long sa = Address.get(Socket.APR_REMOTE, socket);
                             Sockaddr addr = Address.getInfo(sa);
@@ -1055,36 +1174,14 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
     public class Poller implements Runnable {
 
         /**
-         * Pointers to the pollers.
+         * Pointer to the poller.
          */
-        private long[] pollers = null;
+        private long aprPoller;
 
         /**
          * Actual poller size.
          */
-        private int actualPollerSize = 0;
-
-        /**
-         * Amount of spots left in the poller.
-         */
-        private int[] pollerSpace = null;
-
-        /**
-         * Amount of low level pollers in use by this poller.
-         */
-        private int pollerCount;
-
-        /**
-         * Timeout value for the poll call.
-         */
-        private int pollerTime;
-
-        /**
-         * Variable poller timeout that adjusts depending on how many poll sets
-         * are in use so that the total poll time across all poll sets remains
-         * equal to pollTime.
-         */
-        private int nextPollerTime;
+        private int pollerSize = 0;
 
         /**
          * Root pool.
@@ -1134,59 +1231,22 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         private AtomicInteger connectionCount = new AtomicInteger(0);
         public int getConnectionCount() { return connectionCount.get(); }
 
-
+        private volatile Thread pollerThread;
         private volatile boolean pollerRunning = true;
 
         /**
-         * Create the poller. With some versions of APR, the maximum poller size
-         * will be 62 (recompiling APR is necessary to remove this limitation).
+         * Create the poller.
          */
         protected synchronized void init() {
 
             pool = Pool.create(serverSockPool);
-
-            // Single poller by default
-            int defaultPollerSize = getMaxConnections();
-
-            if ((OS.IS_WIN32 || OS.IS_WIN64) && (defaultPollerSize > 1024)) {
-                // The maximum per poller to get reasonable performance is 1024
-                // Adjust poller size so that it won't reach the limit. This is
-                // a limitation of XP / Server 2003 that has been fixed in
-                // Vista / Server 2008 onwards.
-                actualPollerSize = 1024;
-            } else {
-                actualPollerSize = defaultPollerSize;
-            }
-
-            timeouts = new SocketTimeouts(defaultPollerSize);
+            pollerSize = getMaxConnections();
+            timeouts = new SocketTimeouts(pollerSize);
 
             // At the moment, setting the timeout is useless, but it could get
             // used again as the normal poller could be faster using maintain.
             // It might not be worth bothering though.
-            long pollset = allocatePoller(actualPollerSize, pool, -1);
-            if (pollset == 0 && actualPollerSize > 1024) {
-                actualPollerSize = 1024;
-                pollset = allocatePoller(actualPollerSize, pool, -1);
-            }
-            if (pollset == 0) {
-                actualPollerSize = 62;
-                pollset = allocatePoller(actualPollerSize, pool, -1);
-            }
-
-            pollerCount = defaultPollerSize / actualPollerSize;
-            pollerTime = pollTime / pollerCount;
-            nextPollerTime = pollerTime;
-
-            pollers = new long[pollerCount];
-            pollers[0] = pollset;
-            for (int i = 1; i < pollerCount; i++) {
-                pollers[i] = allocatePoller(actualPollerSize, pool, -1);
-            }
-
-            pollerSpace = new int[pollerCount];
-            for (int i = 0; i < pollerCount; i++) {
-                pollerSpace[i] = actualPollerSize;
-            }
+            aprPoller = allocatePoller(pollerSize, pool, -1);
 
             /*
              * x2 - One descriptor for the socket, one for the event(s).
@@ -1195,12 +1255,20 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
              *      for a maximum of two events (read and write) at any one
              *      time.
              *
-             * Therefore size is actual poller size *4.
+             * Therefore size is poller size *4.
              */
-            desc = new long[actualPollerSize * 4];
+            desc = new long[pollerSize * 4];
             connectionCount.set(0);
-            addList = new SocketList(defaultPollerSize);
-            closeList = new SocketList(defaultPollerSize);
+            addList = new SocketList(pollerSize);
+            closeList = new SocketList(pollerSize);
+        }
+
+
+        protected void start() {
+            pollerThread = new Thread(poller, getName() + "-Poller");
+            pollerThread.setPriority(threadPriority);
+            pollerThread.setDaemon(true);
+            pollerThread.start();
         }
 
 
@@ -1210,6 +1278,8 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          */
         protected synchronized void stop() {
             pollerRunning = false;
+            // In case the poller thread is in the idle wait
+            this.notify();
         }
 
 
@@ -1217,21 +1287,27 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          * Destroy the poller.
          */
         protected synchronized void destroy() {
-            // Wait for pollerTime before doing anything, so that the poller
-            // threads exit, otherwise parallel destruction of sockets which are
-            // still in the poller can cause problems
-            try {
-                this.notify();
-                this.wait(pollerCount * pollTime / 1000);
-            } catch (InterruptedException e) {
-                // Ignore
+            // Wait for the poller thread to exit, otherwise parallel
+            // destruction of sockets which are still in the poller can cause
+            // problems.
+            int loops = 50;
+            while (loops > 0 && pollerThread.isAlive()) {
+                try {
+                    this.wait(pollTime / 1000);
+                } catch (InterruptedException e) {
+                    // Ignore
+                }
+                loops--;
+            }
+            if (pollerThread.isAlive()) {
+                log.warn(sm.getString("endpoint.pollerThreadStop"));
             }
             // Close all sockets in the close queue
             SocketInfo info = closeList.get();
             while (info != null) {
                 // Make sure we aren't trying add the socket as well as close it
                 addList.remove(info.socket);
-                // Make sure the  socket isn't in the poller before we close it
+                // Make sure the socket isn't in the poller before we close it
                 removeFromPoller(info.socket);
                 // Poller isn't running at this point so use destroySocket()
                 // directly
@@ -1242,7 +1318,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             // Close all sockets in the add queue
             info = addList.get();
             while (info != null) {
-                // Make sure the  socket isn't in the poller before we close it
+                // Make sure the socket isn't in the poller before we close it
                 removeFromPoller(info.socket);
                 // Poller isn't running at this point so use destroySocket()
                 // directly
@@ -1251,12 +1327,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             }
             addList.clear();
             // Close all sockets still in the poller
-            for (int i = 0; i < pollerCount; i++) {
-                int rv = Poll.pollset(pollers[i], desc);
-                if (rv > 0) {
-                    for (int n = 0; n < rv; n++) {
-                        destroySocket(desc[n*2+1]);
-                    }
+            int rv = Poll.pollset(aprPoller, desc);
+            if (rv > 0) {
+                for (int n = 0; n < rv; n++) {
+                    destroySocket(desc[n*2+1]);
                 }
             }
             Pool.destroy(pool);
@@ -1297,6 +1371,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 // Add socket to the list. Newly added sockets will wait
                 // at most for pollTime before being polled.
                 if (addList.add(socket, timeout, flags)) {
+                    // In case the poller thread is in the idle wait
                     this.notify();
                 }
             }
@@ -1308,16 +1383,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          * {@link Poller#run()}.
          */
         private boolean addToPoller(long socket, int events) {
-            int rv = -1;
-            for (int i = 0; i < pollers.length; i++) {
-                if (pollerSpace[i] > 0) {
-                    rv = Poll.add(pollers[i], socket, events);
-                    if (rv == Status.APR_SUCCESS) {
-                        pollerSpace[i]--;
-                        connectionCount.incrementAndGet();
-                        return true;
-                    }
-                }
+            int rv = Poll.add(aprPoller, socket, events);
+            if (rv == Status.APR_SUCCESS) {
+                connectionCount.incrementAndGet();
+                return true;
             }
             return false;
         }
@@ -1330,6 +1399,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          */
         private synchronized void close(long socket) {
             closeList.add(socket, 0, 0);
+            // In case the poller thread is in the idle wait
             this.notify();
         }
 
@@ -1343,23 +1413,17 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 log.debug(sm.getString("endpoint.debug.pollerRemove",
                         Long.valueOf(socket)));
             }
-            int rv = -1;
-            for (int i = 0; i < pollers.length; i++) {
-                if (pollerSpace[i] < actualPollerSize) {
-                    rv = Poll.remove(pollers[i], socket);
-                    if (rv != Status.APR_NOTFOUND) {
-                        pollerSpace[i]++;
-                        connectionCount.decrementAndGet();
-                        if (log.isDebugEnabled()) {
-                            log.debug(sm.getString("endpoint.debug.pollerRemoved",
-                                    Long.valueOf(socket)));
-                        }
-                        break;
-                    }
+            int rv = Poll.remove(aprPoller, socket);
+            if (rv != Status.APR_NOTFOUND) {
+                connectionCount.decrementAndGet();
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("endpoint.debug.pollerRemoved",
+                            Long.valueOf(socket)));
                 }
             }
             timeouts.remove(socket);
         }
+
 
         /**
          * Timeout checks. Must only be called from {@link Poller#run()}.
@@ -1380,8 +1444,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                             Long.valueOf(socket)));
                 }
                 SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(socket));
-                socketWrapper.setError(new SocketTimeoutException());
-                processSocket(socketWrapper, SocketEvent.ERROR, true);
+                if (socketWrapper != null) {
+                    socketWrapper.setError(new SocketTimeoutException());
+                    processSocket(socketWrapper, SocketEvent.ERROR, true);
+                }
                 socket = timeouts.check(date);
             }
 
@@ -1392,17 +1458,15 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          */
         @Override
         public String toString() {
-            StringBuffer buf = new StringBuffer();
+            StringBuilder buf = new StringBuilder();
             buf.append("Poller");
-            long[] res = new long[actualPollerSize * 2];
-            for (int i = 0; i < pollers.length; i++) {
-                int count = Poll.pollset(pollers[i], res);
-                buf.append(" [ ");
-                for (int j = 0; j < count; j++) {
-                    buf.append(desc[2*j+1]).append(" ");
-                }
-                buf.append("]");
+            long[] res = new long[pollerSize * 2];
+            int count = Poll.pollset(aprPoller, res);
+            buf.append(" [ ");
+            for (int j = 0; j < count; j++) {
+                buf.append(desc[2*j+1]).append(' ');
             }
+            buf.append(']');
             return buf.toString();
         }
 
@@ -1434,7 +1498,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                             // with no processing since the notify() call in
                             // add()/close() would have no effect since it
                             // happened before this sync block was entered
-                            if (addList.size() < 1 && closeList.size() < 1) {
+                            if (pollerRunning && addList.size() < 1 && closeList.size() < 1) {
                                 this.wait(10000);
                             }
                         }
@@ -1527,168 +1591,146 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                         }
                     }
 
-                    // Poll for the specified interval
-                    for (int i = 0; i < pollers.length; i++) {
+                    // Flag to ask to reallocate the pool
+                    boolean reset = false;
 
-                        // Flag to ask to reallocate the pool
-                        boolean reset = false;
-
-                        int rv = 0;
-                        // Iterate on each pollers, but no need to poll empty pollers
-                        if (pollerSpace[i] < actualPollerSize) {
-                            rv = Poll.poll(pollers[i], nextPollerTime, desc, true);
-                            // Reset the nextPollerTime
-                            nextPollerTime = pollerTime;
-                        } else {
-                            // Skipping an empty poll set means skipping a wait
-                            // time of pollerTime microseconds. If most of the
-                            // poll sets are skipped then this loop will be
-                            // tighter than expected which could lead to higher
-                            // than expected CPU usage. Extending the
-                            // nextPollerTime ensures that this loop always
-                            // takes about the same time to execute.
-                            nextPollerTime += pollerTime;
-                        }
-                        if (rv > 0) {
-                            rv = mergeDescriptors(desc, rv);
-                            pollerSpace[i] += rv;
-                            connectionCount.addAndGet(-rv);
-                            for (int n = 0; n < rv; n++) {
-                                if (getLog().isDebugEnabled()) {
-                                    log.debug(sm.getString(
-                                            "endpoint.debug.pollerProcess",
-                                            Long.valueOf(desc[n*2+1]),
-                                            Long.valueOf(desc[n*2])));
-                                }
-                                long timeout = timeouts.remove(desc[n*2+1]);
-                                AprSocketWrapper wrapper = connections.get(
-                                        Long.valueOf(desc[n*2+1]));
-                                if (wrapper == null) {
-                                    // Socket was closed in another thread while still in
-                                    // the Poller but wasn't removed from the Poller before
-                                    // new data arrived.
-                                    continue;
-                                }
-                                wrapper.pollerFlags = wrapper.pollerFlags & ~((int) desc[n*2]);
-                                // Check for failed sockets and hand this socket off to a worker
-                                if (((desc[n*2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP)
-                                        || ((desc[n*2] & Poll.APR_POLLERR) == Poll.APR_POLLERR)
-                                        || ((desc[n*2] & Poll.APR_POLLNVAL) == Poll.APR_POLLNVAL)) {
-                                    // Need to trigger error handling. Poller may return error
-                                    // codes plus the flags it was waiting for or it may just
-                                    // return an error code. We could handle the error here but
-                                    // if we do, there will be no exception associated with the
-                                    // error in application code. By signalling read/write is
-                                    // possible, a read/write will be attempted, fail and that
-                                    // will trigger an exception the application will see.
-                                    // Check the return flags first, followed by what the socket
-                                    // was registered for
-                                    if ((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
-                                        // Error probably occurred during a non-blocking read
-                                        if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
-                                            // Close socket and clear pool
-                                            closeSocket(desc[n*2+1]);
-                                        }
-                                    } else if ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
-                                        // Error probably occurred during a non-blocking write
-                                        if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
-                                            // Close socket and clear pool
-                                            closeSocket(desc[n*2+1]);
-                                        }
-                                    } else if ((wrapper.pollerFlags & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
-                                        // Can't tell what was happening when the error occurred but the
-                                        // socket is registered for non-blocking read so use that
-                                        if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
-                                            // Close socket and clear pool
-                                            closeSocket(desc[n*2+1]);
-                                        }
-                                    } else if ((wrapper.pollerFlags & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
-                                        // Can't tell what was happening when the error occurred but the
-                                        // socket is registered for non-blocking write so use that
-                                        if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
-                                            // Close socket and clear pool
-                                            closeSocket(desc[n*2+1]);
-                                        }
-                                    } else {
+                    int rv = Poll.poll(aprPoller, pollTime, desc, true);
+                    if (rv > 0) {
+                        rv = mergeDescriptors(desc, rv);
+                        connectionCount.addAndGet(-rv);
+                        for (int n = 0; n < rv; n++) {
+                            if (getLog().isDebugEnabled()) {
+                                log.debug(sm.getString(
+                                        "endpoint.debug.pollerProcess",
+                                        Long.valueOf(desc[n*2+1]),
+                                        Long.valueOf(desc[n*2])));
+                            }
+                            long timeout = timeouts.remove(desc[n*2+1]);
+                            AprSocketWrapper wrapper = connections.get(
+                                    Long.valueOf(desc[n*2+1]));
+                            if (wrapper == null) {
+                                // Socket was closed in another thread while still in
+                                // the Poller but wasn't removed from the Poller before
+                                // new data arrived.
+                                continue;
+                            }
+                            wrapper.pollerFlags = wrapper.pollerFlags & ~((int) desc[n*2]);
+                            // Check for failed sockets and hand this socket off to a worker
+                            if (((desc[n*2] & Poll.APR_POLLHUP) == Poll.APR_POLLHUP)
+                                    || ((desc[n*2] & Poll.APR_POLLERR) == Poll.APR_POLLERR)
+                                    || ((desc[n*2] & Poll.APR_POLLNVAL) == Poll.APR_POLLNVAL)) {
+                                // Need to trigger error handling. Poller may return error
+                                // codes plus the flags it was waiting for or it may just
+                                // return an error code. We could handle the error here but
+                                // if we do, there will be no exception associated with the
+                                // error in application code. By signalling read/write is
+                                // possible, a read/write will be attempted, fail and that
+                                // will trigger an exception the application will see.
+                                // Check the return flags first, followed by what the socket
+                                // was registered for
+                                if ((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
+                                    // Error probably occurred during a non-blocking read
+                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
                                         // Close socket and clear pool
                                         closeSocket(desc[n*2+1]);
                                     }
-                                } else if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN)
-                                        || ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT)) {
-                                    boolean error = false;
-                                    if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) &&
-                                            !processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
-                                        error = true;
+                                } else if ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
+                                    // Error probably occurred during a non-blocking write
+                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
                                         // Close socket and clear pool
                                         closeSocket(desc[n*2+1]);
                                     }
-                                    if (!error &&
-                                            ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) &&
-                                            !processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                } else if ((wrapper.pollerFlags & Poll.APR_POLLIN) == Poll.APR_POLLIN) {
+                                    // Can't tell what was happening when the error occurred but the
+                                    // socket is registered for non-blocking read so use that
+                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
                                         // Close socket and clear pool
-                                        error = true;
                                         closeSocket(desc[n*2+1]);
                                     }
-                                    if (!error && wrapper.pollerFlags != 0) {
-                                        // If socket was registered for multiple events but
-                                        // only some of the occurred, re-register for the
-                                        // remaining events.
-                                        // timeout is the value of System.currentTimeMillis() that
-                                        // was set as the point that the socket will timeout. When
-                                        // adding to the poller, the timeout from now in
-                                        // milliseconds is required.
-                                        // So first, subtract the current timestamp
-                                        if (timeout > 0) {
-                                            timeout = timeout - System.currentTimeMillis();
-                                        }
-                                        // If the socket should have already expired by now,
-                                        // re-add it with a very short timeout
-                                        if (timeout <= 0) {
-                                            timeout = 1;
-                                        }
-                                        // Should be impossible but just in case since timeout will
-                                        // be cast to an int.
-                                        if (timeout > Integer.MAX_VALUE) {
-                                            timeout = Integer.MAX_VALUE;
-                                        }
-                                        add(desc[n*2+1], (int) timeout, wrapper.pollerFlags);
+                                } else if ((wrapper.pollerFlags & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) {
+                                    // Can't tell what was happening when the error occurred but the
+                                    // socket is registered for non-blocking write so use that
+                                    if (!processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                        // Close socket and clear pool
+                                        closeSocket(desc[n*2+1]);
                                     }
                                 } else {
-                                    // Unknown event
-                                    getLog().warn(sm.getString(
-                                            "endpoint.apr.pollUnknownEvent",
-                                            Long.valueOf(desc[n*2])));
                                     // Close socket and clear pool
                                     closeSocket(desc[n*2+1]);
                                 }
-                            }
-                        } else if (rv < 0) {
-                            int errn = -rv;
-                            // Any non timeup or interrupted error is critical
-                            if ((errn != Status.TIMEUP) && (errn != Status.EINTR)) {
-                                if (errn >  Status.APR_OS_START_USERERR) {
-                                    errn -=  Status.APR_OS_START_USERERR;
+                            } else if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN)
+                                    || ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT)) {
+                                boolean error = false;
+                                if (((desc[n*2] & Poll.APR_POLLIN) == Poll.APR_POLLIN) &&
+                                        !processSocket(desc[n*2+1], SocketEvent.OPEN_READ)) {
+                                    error = true;
+                                    // Close socket and clear pool
+                                    closeSocket(desc[n*2+1]);
                                 }
-                                getLog().error(sm.getString(
-                                        "endpoint.apr.pollError",
-                                        Integer.valueOf(errn),
-                                        Error.strerror(errn)));
-                                // Destroy and reallocate the poller
-                                reset = true;
+                                if (!error &&
+                                        ((desc[n*2] & Poll.APR_POLLOUT) == Poll.APR_POLLOUT) &&
+                                        !processSocket(desc[n*2+1], SocketEvent.OPEN_WRITE)) {
+                                    // Close socket and clear pool
+                                    error = true;
+                                    closeSocket(desc[n*2+1]);
+                                }
+                                if (!error && wrapper.pollerFlags != 0) {
+                                    // If socket was registered for multiple events but
+                                    // only some of the occurred, re-register for the
+                                    // remaining events.
+                                    // timeout is the value of System.currentTimeMillis() that
+                                    // was set as the point that the socket will timeout. When
+                                    // adding to the poller, the timeout from now in
+                                    // milliseconds is required.
+                                    // So first, subtract the current timestamp
+                                    if (timeout > 0) {
+                                        timeout = timeout - System.currentTimeMillis();
+                                    }
+                                    // If the socket should have already expired by now,
+                                    // re-add it with a very short timeout
+                                    if (timeout <= 0) {
+                                        timeout = 1;
+                                    }
+                                    // Should be impossible but just in case since timeout will
+                                    // be cast to an int.
+                                    if (timeout > Integer.MAX_VALUE) {
+                                        timeout = Integer.MAX_VALUE;
+                                    }
+                                    add(desc[n*2+1], (int) timeout, wrapper.pollerFlags);
+                                }
+                            } else {
+                                // Unknown event
+                                getLog().warn(sm.getString(
+                                        "endpoint.apr.pollUnknownEvent",
+                                        Long.valueOf(desc[n*2])));
+                                // Close socket and clear pool
+                                closeSocket(desc[n*2+1]);
                             }
                         }
-
-                        if (reset && pollerRunning) {
-                            // Reallocate the current poller
-                            int count = Poll.pollset(pollers[i], desc);
-                            long newPoller = allocatePoller(actualPollerSize, pool, -1);
-                            // Don't restore connections for now, since I have not tested it
-                            pollerSpace[i] = actualPollerSize;
-                            connectionCount.addAndGet(-count);
-                            Poll.destroy(pollers[i]);
-                            pollers[i] = newPoller;
+                    } else if (rv < 0) {
+                        int errn = -rv;
+                        // Any non timeup or interrupted error is critical
+                        if ((errn != Status.TIMEUP) && (errn != Status.EINTR)) {
+                            if (errn >  Status.APR_OS_START_USERERR) {
+                                errn -=  Status.APR_OS_START_USERERR;
+                            }
+                            getLog().error(sm.getString(
+                                    "endpoint.apr.pollError",
+                                    Integer.valueOf(errn),
+                                    Error.strerror(errn)));
+                            // Destroy and reallocate the poller
+                            reset = true;
                         }
+                    }
 
+                    if (reset && pollerRunning) {
+                        // Reallocate the current poller
+                        int count = Poll.pollset(aprPoller, desc);
+                        long newPoller = allocatePoller(pollerSize, pool, -1);
+                        // Don't restore connections for now, since I have not tested it
+                        connectionCount.addAndGet(-count);
+                        Poll.destroy(aprPoller);
+                        aprPoller = newPoller;
                     }
                 } catch (Throwable t) {
                     ExceptionUtils.handleThrowable(t);
@@ -1779,49 +1821,41 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
 
         protected ArrayList<SendfileData> addS;
 
+        private volatile Thread sendfileThread;
         private volatile boolean sendfileRunning = true;
 
         /**
-         * Create the sendfile poller. With some versions of APR, the maximum
-         * poller size will be 62 (recompiling APR is necessary to remove this
-         * limitation).
+         * Create the sendfile poller.
          */
         protected void init() {
             pool = Pool.create(serverSockPool);
             int size = sendfileSize;
             if (size <= 0) {
-                size = (OS.IS_WIN32 || OS.IS_WIN64) ? (1 * 1024) : (16 * 1024);
+                size = 16 * 1024;
             }
             sendfilePollset = allocatePoller(size, pool, getConnectionTimeout());
-            if (sendfilePollset == 0 && size > 1024) {
-                size = 1024;
-                sendfilePollset = allocatePoller(size, pool, getConnectionTimeout());
-            }
-            if (sendfilePollset == 0) {
-                size = 62;
-                sendfilePollset = allocatePoller(size, pool, getConnectionTimeout());
-            }
             desc = new long[size * 2];
             sendfileData = new HashMap<>(size);
             addS = new ArrayList<>();
+        }
+
+        protected void start() {
+            sendfileThread = new Thread(sendfile, getName() + "-Sendfile");
+            sendfileThread.setPriority(threadPriority);
+            sendfileThread.setDaemon(true);
+            sendfileThread.start();
+        }
+
+        protected synchronized void stop() {
+            sendfileRunning = false;
+            // In case the sendfile thread is in the idle wait
+            this.notify();
         }
 
         /**
          * Destroy the poller.
          */
         protected void destroy() {
-            sendfileRunning = false;
-            // Wait for polltime before doing anything, so that the poller threads
-            // exit, otherwise parallel destruction of sockets which are still
-            // in the poller can cause problems
-            try {
-                synchronized (this) {
-                    this.notify();
-                    this.wait(pollTime / 1000);
-                }
-            } catch (InterruptedException e) {
-                // Ignore
-            }
             // Close any socket remaining in the add queue
             for (int i = (addS.size() - 1); i >= 0; i--) {
                 SendfileData data = addS.get(i);
@@ -1844,11 +1878,20 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
          * will be handled asynchronously inside the kernel. As a result,
          * the poller will never be used.
          *
-         * @param data containing the reference to the data which should be snet
+         * @param data containing the reference to the data which should be sent
          * @return true if all the data has been sent right away, and false
          *              otherwise
          */
         public SendfileState add(SendfileData data) {
+
+            SocketWrapperBase<Long> socketWrapper = connections.get(Long.valueOf(data.socket));
+
+            // Use the blocking status write lock as a proxy for a lock on
+            // writing to the socket. Don't want it to close in another thread
+            // while this thread is writing as that could trigger a JVM crash.
+            WriteLock wl = ((AprSocketWrapper) socketWrapper).getBlockingStatusWriteLock();
+            wl.lock();
+
             // Initialize fd from data given
             try {
                 data.fdpool = Socket.pool(data.socket);
@@ -1885,6 +1928,8 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             } catch (Exception e) {
                 log.warn(sm.getString("endpoint.sendfile.error"), e);
                 return SendfileState.ERROR;
+            } finally {
+                wl.unlock();
             }
             // Add socket to the list. Newly added sockets will wait
             // at most for pollTime before being polled
@@ -1919,21 +1964,15 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             // Loop until we receive a shutdown command
             while (sendfileRunning) {
 
-                // Loop if endpoint is paused
-                while (sendfileRunning && paused) {
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        // Ignore
-                    }
-                }
                 // Loop if poller is empty
                 while (sendfileRunning && sendfileCount < 1 && addS.size() < 1) {
                     // Reset maintain time.
                     maintainTime = 0;
                     try {
                         synchronized (this) {
-                            this.wait();
+                            if (sendfileRunning && sendfileCount < 1 && addS.size() < 1) {
+                                this.wait();
+                            }
                         }
                     } catch (InterruptedException e) {
                         // Ignore
@@ -2112,6 +2151,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                                 getConnectionTimeout(), Poll.APR_POLLIN);
                     } else {
                         // Close socket and pool
+                        getHandler().process(socket, SocketEvent.CONNECT_FAIL);
                         closeSocket(socket.getSocket().longValue());
                         socket = null;
                     }
@@ -2119,13 +2159,13 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     // Process the request from this socket
                     if (!setSocketOptions(socket)) {
                         // Close socket and pool
+                        getHandler().process(socket, SocketEvent.CONNECT_FAIL);
                         closeSocket(socket.getSocket().longValue());
                         socket = null;
                         return;
                     }
                     // Process the request from this socket
-                    Handler.SocketState state = getHandler().process(socket,
-                            SocketEvent.OPEN_READ);
+                    Handler.SocketState state = getHandler().process(socket, SocketEvent.OPEN_READ);
                     if (state == Handler.SocketState.CLOSED) {
                         // Close socket and pool
                         closeSocket(socket.getSocket().longValue());
@@ -2144,7 +2184,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
      * This class is the equivalent of the Worker, but will simply use in an
      * external Executor thread pool.
      */
-    protected class SocketProcessor extends  SocketProcessorBase<Long> {
+    protected class SocketProcessor extends SocketProcessorBase<Long> {
 
         public SocketProcessor(SocketWrapperBase<Long> socketWrapper, SocketEvent event) {
             super(socketWrapper, event);
@@ -2163,7 +2203,7 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 socketWrapper = null;
                 event = null;
                 //return to cache
-                if (running && !paused) {
+                if (running) {
                     processorCache.push(this);
                 }
             }
@@ -2183,9 +2223,20 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         // This field should only be used by Poller#run()
         private int pollerFlags = 0;
 
+        /*
+         * Used if block/non-blocking is set at the socket level. The client is
+         * responsible for the thread-safe use of this field via the locks provided.
+         */
+        private volatile boolean blockingStatus = true;
+        private final Lock blockingStatusReadLock;
+        private final WriteLock blockingStatusWriteLock;
 
         public AprSocketWrapper(Long socket, AprEndpoint endpoint) {
             super(socket, endpoint);
+
+            ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+            this.blockingStatusReadLock = lock.readLock();
+            this.blockingStatusWriteLock = lock.writeLock();
 
             // TODO Make the socketWriteBuffer size configurable and align the
             //      SSL and app buffer size settings with NIO & NIO2.
@@ -2199,6 +2250,14 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             socketBufferHandler = new SocketBufferHandler(6 * 1500, 6 * 1500, true);
         }
 
+        public boolean getBlockingStatus() { return blockingStatus; }
+        public void setBlockingStatus(boolean blockingStatus) {
+            this.blockingStatus = blockingStatus;
+        }
+        public Lock getBlockingStatusReadLock() { return blockingStatusReadLock; }
+        public WriteLock getBlockingStatusWriteLock() {
+            return blockingStatusWriteLock;
+        }
 
         @Override
         public int read(boolean block, byte[] b, int off, int len) throws IOException {
@@ -2383,7 +2442,10 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 if (sslOutputBuffer != null) {
                     ByteBufferUtils.cleanDirectBuffer(sslOutputBuffer);
                 }
-                ((AprEndpoint) getEndpoint()).getPoller().close(getSocket().longValue());
+                Poller poller = ((AprEndpoint) getEndpoint()).getPoller();
+                if (poller != null) {
+                    poller.close(getSocket().longValue());
+                }
             }
         }
 
@@ -2392,57 +2454,6 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         public boolean isClosed() {
             synchronized (closedLock) {
                 return closed;
-            }
-        }
-
-
-        @Override
-        protected void writeBlockingDirect(ByteBuffer from) throws IOException {
-            if (from.isDirect()) {
-                super.writeBlockingDirect(from);
-            } else {
-                // The socket write buffer capacity is socket.appWriteBufSize
-                ByteBuffer writeBuffer = socketBufferHandler.getWriteBuffer();
-                int limit = writeBuffer.capacity();
-                while (from.remaining() >= limit) {
-                    socketBufferHandler.configureWriteBufferForWrite();
-                    transfer(from, writeBuffer);
-                    doWrite(true);
-                }
-
-                if (from.remaining() > 0) {
-                    socketBufferHandler.configureWriteBufferForWrite();
-                    transfer(from, writeBuffer);
-                }
-            }
-        }
-
-
-        @Override
-        protected void writeNonBlockingDirect(ByteBuffer from) throws IOException {
-            if (from.isDirect()) {
-                super.writeNonBlockingDirect(from);
-            } else {
-                // The socket write buffer capacity is socket.appWriteBufSize
-                ByteBuffer writeBuffer = socketBufferHandler.getWriteBuffer();
-                int limit = writeBuffer.capacity();
-                while (from.remaining() >= limit) {
-                    socketBufferHandler.configureWriteBufferForWrite();
-                    transfer(from, writeBuffer);
-                    int newPosition = writeBuffer.position() + limit;
-                    doWrite(false);
-                    if (writeBuffer.position() != newPosition) {
-                        // Didn't write the whole amount of data in the last
-                        // non-blocking write.
-                        // Exit the loop.
-                        return;
-                    }
-                }
-
-                if (from.remaining() > 0) {
-                    socketBufferHandler.configureWriteBufferForWrite();
-                    transfer(from, writeBuffer);
-                }
             }
         }
 
@@ -2498,6 +2509,25 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
 
 
         private void doWriteInternal(ByteBuffer from) throws IOException {
+
+            if (previousIOException != null) {
+                /*
+                 * Socket has previously seen an IOException on write.
+                 *
+                 * Blocking writes assume that buffer is always fully written so
+                 * there is no code checking for incomplete writes, retaining
+                 * the unwritten data and attempting to write it as part of a
+                 * subsequent write call.
+                 *
+                 * Because of the above, when an IOException is triggered we
+                 * need so skip subsequent attempts to write as otherwise it
+                 * will appear to the client as if some data was dropped just
+                 * before the connection is lost. It is better if the client
+                 * just sees the dropped connection.
+                 */
+                throw new IOException(previousIOException);
+            }
+
             int thisTime;
 
             do {
@@ -2534,8 +2564,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                     // 10053 on Windows is connection aborted
                     throw new EOFException(sm.getString("socket.apr.clientAbort"));
                 } else if (thisTime < 0) {
-                    throw new IOException(sm.getString("socket.apr.write.error",
+                    previousIOException = new IOException(sm.getString("socket.apr.write.error",
                             Integer.valueOf(-thisTime), getSocket(), this));
+                    throw previousIOException;
                 }
             } while ((thisTime > 0 || getBlockingStatus()) && from.hasRemaining());
 
@@ -2553,6 +2584,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 if (closed) {
                     return;
                 }
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("endpoint.debug.registerRead", this));
+                }
                 Poller p = ((AprEndpoint) getEndpoint()).getPoller();
                 if (p != null) {
                     p.add(getSocket().longValue(), getReadTimeout(), Poll.APR_POLLIN);
@@ -2567,6 +2601,9 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
             synchronized (closedLock) {
                 if (closed) {
                     return;
+                }
+                if (log.isDebugEnabled()) {
+                    log.debug(sm.getString("endpoint.debug.registerWrite", this));
                 }
                 ((AprEndpoint) getEndpoint()).getPoller().add(
                         getSocket().longValue(), getWriteTimeout(), Poll.APR_POLLOUT);
@@ -2695,10 +2732,50 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
         @Override
         public void doClientAuth(SSLSupport sslSupport) throws IOException {
             long socket = getSocket().longValue();
-            // Configure connection to require a certificate
+            // Configure connection to require a certificate. This requires a
+            // re-handshake and must block until the re-handshake completes.
+            // Therefore, make sure socket is in blocking mode.
+            Lock readLock = getBlockingStatusReadLock();
+            WriteLock writeLock = getBlockingStatusWriteLock();
+            boolean renegotiateDone = false;
             try {
-                SSLSocket.setVerify(socket, SSL.SSL_CVERIFY_REQUIRE, -1);
-                SSLSocket.renegotiate(socket);
+                readLock.lock();
+                try {
+                    if (getBlockingStatus()) {
+                        Socket.timeoutSet(getSocket().longValue(), getReadTimeout() * 1000);
+
+                        SSLSocket.setVerify(socket, SSL.SSL_CVERIFY_REQUIRE, -1);
+                        SSLSocket.renegotiate(socket);
+
+                        renegotiateDone = true;
+                    }
+                } finally {
+                    readLock.unlock();
+                }
+
+                if (!renegotiateDone) {
+                    writeLock.lock();
+                    try {
+                        // Set the current settings for this socket
+                        setBlockingStatus(true);
+                        Socket.timeoutSet(getSocket().longValue(), getReadTimeout() * 1000);
+                        // Downgrade the lock
+                        readLock.lock();
+                        try {
+                            writeLock.unlock();
+                            SSLSocket.setVerify(socket, SSL.SSL_CVERIFY_REQUIRE, -1);
+                            SSLSocket.renegotiate(socket);
+                        } finally {
+                            readLock.unlock();
+                        }
+                    } finally {
+                        // Should have been released above but may not have been on some
+                        // exception paths
+                        if (writeLock.isHeldByCurrentThread()) {
+                            writeLock.unlock();
+                        }
+                    }
+                }
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 throw new IOException(sm.getString("socket.sslreneg"), t);
@@ -2749,5 +2826,118 @@ public class AprEndpoint extends AbstractEndpoint<Long> implements SNICallBack {
                 }
             }
         }
+
+        @Override
+        protected <A> OperationState<A> newOperationState(boolean read,
+                ByteBuffer[] buffers, int offset, int length,
+                BlockingMode block, long timeout, TimeUnit unit, A attachment,
+                CompletionCheck check, CompletionHandler<Long, ? super A> handler,
+                Semaphore semaphore, VectoredIOCompletionHandler<A> completion) {
+            return new AprOperationState<>(read, buffers, offset, length, block,
+                    timeout, unit, attachment, check, handler, semaphore, completion);
+        }
+
+        private class AprOperationState<A> extends OperationState<A> {
+            private volatile boolean inline = true;
+            private volatile long flushBytes = 0;
+            private AprOperationState(boolean read, ByteBuffer[] buffers, int offset, int length,
+                    BlockingMode block, long timeout, TimeUnit unit, A attachment, CompletionCheck check,
+                    CompletionHandler<Long, ? super A> handler, Semaphore semaphore,
+                    VectoredIOCompletionHandler<A> completion) {
+                super(read, buffers, offset, length, block,
+                        timeout, unit, attachment, check, handler, semaphore, completion);
+            }
+
+            @Override
+            protected boolean isInline() {
+                return inline;
+            }
+
+            @Override
+            public void run() {
+                // Perform the IO operation
+                // Called from the poller to continue the IO operation
+                long nBytes = 0;
+                if (getError() == null) {
+                    try {
+                        synchronized (this) {
+                            if (!completionDone) {
+                                // This filters out same notification until processing
+                                // of the current one is done
+                                if (log.isDebugEnabled()) {
+                                    log.debug("Skip concurrent " + (read ? "read" : "write") + " notification");
+                                }
+                                return;
+                            }
+                            // Find the buffer on which the operation will be performed (no vectoring with APR)
+                            ByteBuffer buffer = null;
+                            for (int i = 0; i < length; i++) {
+                                if (buffers[i + offset].hasRemaining()) {
+                                    buffer = buffers[i + offset];
+                                    break;
+                                }
+                            }
+                            if (buffer == null && flushBytes == 0) {
+                                // Nothing to do
+                                completion.completed(Long.valueOf(0), this);
+                                return;
+                            }
+                            if (read) {
+                                nBytes = read(false, buffer);
+                            } else {
+                                if (!flush(block == BlockingMode.BLOCK)) {
+                                    if (flushBytes > 0) {
+                                        // Flushing was done, continue processing
+                                        nBytes = flushBytes;
+                                        flushBytes = 0;
+                                    } else {
+                                        @SuppressWarnings("null") // Not possible
+                                        int remaining = buffer.remaining();
+                                        write(block == BlockingMode.BLOCK, buffer);
+                                        nBytes = remaining - buffer.remaining();
+                                        if (nBytes > 0 && flush(block == BlockingMode.BLOCK)) {
+                                            // We have to flush and it's incomplete, save the bytes written until done
+                                            inline = false;
+                                            registerWriteInterest();
+                                            flushBytes = nBytes;
+                                            return;
+                                        }
+                                    }
+                                } else {
+                                    // Continue flushing
+                                    inline = false;
+                                    registerWriteInterest();
+                                    return;
+                                }
+                            }
+                            if (nBytes != 0) {
+                                completionDone = false;
+                            }
+                        }
+                    } catch (IOException e) {
+                        setError(e);
+                    }
+                }
+                if (nBytes > 0) {
+                    // The bytes processed are only updated in the completion handler
+                    completion.completed(Long.valueOf(nBytes), this);
+                } else if (nBytes < 0 || getError() != null) {
+                    IOException error = getError();
+                    if (error == null) {
+                        error = new EOFException();
+                    }
+                    completion.failed(error, this);
+                } else {
+                    // As soon as the operation uses the poller, it is no longer inline
+                    inline = false;
+                    if (read) {
+                        registerReadInterest();
+                    } else {
+                        registerWriteInterest();
+                    }
+                }
+            }
+        }
+
     }
 }

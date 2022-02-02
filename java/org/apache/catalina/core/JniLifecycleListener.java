@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 import org.apache.catalina.Lifecycle;
@@ -22,6 +21,7 @@ import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
+import org.apache.tomcat.util.res.StringManager;
 
 /**
  * An implementation of LifeCycleListener that loads a native library into the JVM.
@@ -38,6 +38,7 @@ import org.apache.juli.logging.LogFactory;
 public class JniLifecycleListener implements LifecycleListener {
 
     private static final Log log = LogFactory.getLog(JniLifecycleListener.class);
+    protected static final StringManager sm = StringManager.getManager(JniLifecycleListener.class);
 
     private String libraryName = "";
     private String libraryPath = "";
@@ -49,12 +50,12 @@ public class JniLifecycleListener implements LifecycleListener {
 
             if (!libraryName.isEmpty()) {
                 System.loadLibrary(libraryName);
-                log.info("Loaded native library " + libraryName);
+                log.info(sm.getString("jniLifecycleListener.load.name", libraryName));
             } else if (!libraryPath.isEmpty()) {
                 System.load(libraryPath);
-                log.info("Loaded native library from " + libraryPath);
+                log.info(sm.getString("jniLifecycleListener.load.path", libraryPath));
             } else {
-                throw new IllegalArgumentException("Either libraryName or libraryPath must be set");
+                throw new IllegalArgumentException(sm.getString("jniLifecycleListener.missingPathOrName"));
             }
         }
     }
@@ -62,7 +63,7 @@ public class JniLifecycleListener implements LifecycleListener {
     public void setLibraryName(String libraryName) {
 
         if (!this.libraryPath.isEmpty()) {
-            throw new IllegalArgumentException("Either libraryName or libraryPath may be set, not both.");
+            throw new IllegalArgumentException(sm.getString("jniLifecycleListener.bothPathAndName"));
         }
 
         this.libraryName = libraryName;
@@ -75,7 +76,7 @@ public class JniLifecycleListener implements LifecycleListener {
     public void setLibraryPath(String libraryPath) {
 
         if (!this.libraryName.isEmpty()) {
-            throw new IllegalArgumentException("Either libraryName or libraryPath may be set, not both.");
+            throw new IllegalArgumentException(sm.getString("jniLifecycleListener.bothPathAndName"));
         }
 
         this.libraryPath = libraryPath;

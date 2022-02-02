@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.digester;
 
 
@@ -145,15 +143,13 @@ public class ObjectCreateRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("ObjectCreateRule[");
         sb.append("className=");
         sb.append(className);
         sb.append(", attributeName=");
         sb.append(attributeName);
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 

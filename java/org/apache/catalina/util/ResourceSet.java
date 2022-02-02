@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.util;
 
 
@@ -104,9 +102,7 @@ public final class ResourceSet<T> extends HashSet<T> {
      * @return the locked state of this parameter map.
      */
     public boolean isLocked() {
-
-        return (this.locked);
-
+        return this.locked;
     }
 
 
@@ -116,9 +112,7 @@ public final class ResourceSet<T> extends HashSet<T> {
      * @param locked The new locked state
      */
     public void setLocked(boolean locked) {
-
         this.locked = locked;
-
     }
 
 
@@ -142,12 +136,11 @@ public final class ResourceSet<T> extends HashSet<T> {
      */
     @Override
     public boolean add(T o) {
-
-        if (locked)
+        if (locked) {
             throw new IllegalStateException
               (sm.getString("resourceSet.locked"));
-        return (super.add(o));
-
+        }
+        return super.add(o);
     }
 
 
@@ -159,9 +152,10 @@ public final class ResourceSet<T> extends HashSet<T> {
     @Override
     public void clear() {
 
-        if (locked)
+        if (locked) {
             throw new IllegalStateException
               (sm.getString("resourceSet.locked"));
+        }
         super.clear();
 
     }
@@ -177,12 +171,11 @@ public final class ResourceSet<T> extends HashSet<T> {
      */
     @Override
     public boolean remove(Object o) {
-
-        if (locked)
+        if (locked) {
             throw new IllegalStateException
               (sm.getString("resourceSet.locked"));
-        return (super.remove(o));
-
+        }
+        return super.remove(o);
     }
 
 

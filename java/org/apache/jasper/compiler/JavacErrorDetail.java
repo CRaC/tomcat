@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.BufferedReader;
@@ -118,7 +117,7 @@ public class JavacErrorDetail {
                         String javaLine = javaLines[javaLineNum-1].trim();
 
                         for (int i=jspBeginLineNum-1; i<jspLines.length; i++) {
-                            if (jspLines[i].indexOf(javaLine) != -1) {
+                            if (jspLines[i].contains(javaLine)) {
                                 // Update jsp line number
                                 jspBeginLineNum = i+1;
                                 break;
@@ -226,6 +225,6 @@ public class JavacErrorDetail {
             lines.add(line);
         }
 
-        return lines.toArray( new String[lines.size()] );
+        return lines.toArray(new String[0]);
     }
 }

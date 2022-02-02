@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -181,7 +182,10 @@ public class StandardWrapper extends ContainerBase
 
     /**
      * Does this servlet implement the SingleThreadModel interface?
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     protected volatile boolean singleThreadModel = false;
 
 
@@ -193,19 +197,28 @@ public class StandardWrapper extends ContainerBase
 
     /**
      * Maximum number of STM instances.
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     protected int maxInstances = 20;
 
 
     /**
      * Number of instances currently loaded for a STM servlet.
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     protected int nInstances = 0;
 
 
     /**
      * Stack containing the STM instances.
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     protected Stack<Servlet> instancePool = null;
 
 
@@ -292,9 +305,7 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public long getAvailable() {
-
-        return (this.available);
-
+        return this.available;
     }
 
 
@@ -309,15 +320,14 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public void setAvailable(long available) {
-
         long oldAvailable = this.available;
-        if (available > System.currentTimeMillis())
+        if (available > System.currentTimeMillis()) {
             this.available = available;
-        else
+        } else {
             this.available = 0L;
+        }
         support.firePropertyChange("available", Long.valueOf(oldAvailable),
                                    Long.valueOf(this.available));
-
     }
 
 
@@ -338,7 +348,7 @@ public class StandardWrapper extends ContainerBase
     @Override
     public int getLoadOnStartup() {
 
-        if (isJspServlet && loadOnStartup < 0) {
+        if (isJspServlet && loadOnStartup == -1) {
             /*
              * JspServlet must always be preloaded, because its instance is
              * used during registerJMX (when registering the JSP
@@ -346,7 +356,7 @@ public class StandardWrapper extends ContainerBase
              */
              return Integer.MAX_VALUE;
         } else {
-            return (this.loadOnStartup);
+            return this.loadOnStartup;
         }
     }
 
@@ -398,11 +408,12 @@ public class StandardWrapper extends ContainerBase
     /**
      * @return maximum number of instances that will be allocated when a single
      * thread model servlet is used.
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     public int getMaxInstances() {
-
-        return (this.maxInstances);
-
+        return this.maxInstances;
     }
 
 
@@ -411,7 +422,10 @@ public class StandardWrapper extends ContainerBase
      * thread model servlet is used.
      *
      * @param maxInstances New value of maxInstances
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     public void setMaxInstances(int maxInstances) {
 
         int oldMaxInstances = this.maxInstances;
@@ -431,9 +445,10 @@ public class StandardWrapper extends ContainerBase
     public void setParent(Container container) {
 
         if ((container != null) &&
-            !(container instanceof Context))
+            !(container instanceof Context)) {
             throw new IllegalArgumentException
                 (sm.getString("standardWrapper.notContext"));
+        }
         if (container instanceof StandardContext) {
             swallowOutput = ((StandardContext)container).getSwallowOutput();
             unloadDelay = ((StandardContext)container).getUnloadDelay();
@@ -448,9 +463,7 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public String getRunAs() {
-
-        return (this.runAs);
-
+        return this.runAs;
     }
 
 
@@ -474,9 +487,7 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public String getServletClass() {
-
-        return (this.servletClass);
-
+        return this.servletClass;
     }
 
 
@@ -523,7 +534,10 @@ public class StandardWrapper extends ContainerBase
      * @return {@code null} if the class has not been loaded, otherwise {@code
      *         true} if the servlet does implement {@code SingleThreadModel} and
      *         {@code false} if it does not.
+     *
+     * @deprecated This will be removed in Tomcat 10.1 onwards.
      */
+    @Deprecated
     public Boolean isSingleThreadModel() {
         // If the servlet has been loaded either singleThreadModel will be true
         // or instance will be non-null
@@ -540,15 +554,16 @@ public class StandardWrapper extends ContainerBase
     @Override
     public boolean isUnavailable() {
 
-        if (!isEnabled())
+        if (!isEnabled()) {
             return true;
-        else if (available == 0L)
+        } else if (available == 0L) {
             return false;
-        else if (available <= System.currentTimeMillis()) {
+        } else if (available <= System.currentTimeMillis()) {
             available = 0L;
             return false;
-        } else
+        } else {
             return true;
+        }
 
     }
 
@@ -564,7 +579,7 @@ public class StandardWrapper extends ContainerBase
             return DEFAULT_SERVLET_METHODS;
         }
 
-        HashSet<String> allow = new HashSet<>();
+        Set<String> allow = new HashSet<>();
         allow.add("TRACE");
         allow.add("OPTIONS");
 
@@ -586,7 +601,6 @@ public class StandardWrapper extends ContainerBase
 
         String[] methodNames = new String[allow.size()];
         return allow.toArray(methodNames);
-
     }
 
 
@@ -618,7 +632,6 @@ public class StandardWrapper extends ContainerBase
 
     // --------------------------------------------------------- Public Methods
 
-
     /**
      * Execute a periodic task, such as reloading, etc. This method will be
      * invoked inside the classloading context of this container. Unexpected
@@ -628,8 +641,9 @@ public class StandardWrapper extends ContainerBase
     public void backgroundProcess() {
         super.backgroundProcess();
 
-        if (!getState().isAvailable())
+        if (!getState().isAvailable()) {
             return;
+        }
 
         if (getServlet() instanceof PeriodicEventListener) {
             ((PeriodicEventListener) getServlet()).periodicEvent();
@@ -651,8 +665,9 @@ public class StandardWrapper extends ContainerBase
         do {
             loops++;
             rootCauseCheck = rootCause.getCause();
-            if (rootCauseCheck != null)
+            if (rootCauseCheck != null) {
                 rootCause = rootCauseCheck;
+            }
         } while (rootCauseCheck != null && (loops < 20));
         return rootCause;
     }
@@ -707,8 +722,9 @@ public class StandardWrapper extends ContainerBase
         } finally {
             mappingsLock.writeLock().unlock();
         }
-        if(parent.getState().equals(LifecycleState.STARTED))
+        if(parent.getState().equals(LifecycleState.STARTED)) {
             fireContainerEvent(ADD_MAPPING_EVENT, mapping);
+        }
 
     }
 
@@ -916,7 +932,7 @@ public class StandardWrapper extends ContainerBase
 
         mappingsLock.readLock().lock();
         try {
-            return mappings.toArray(new String[mappings.size()]);
+            return mappings.toArray(new String[0]);
         } finally {
             mappingsLock.readLock().unlock();
         }
@@ -932,14 +948,26 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public String findSecurityReference(String name) {
+        String reference = null;
 
         referencesLock.readLock().lock();
         try {
-            return references.get(name);
+            reference = references.get(name);
         } finally {
             referencesLock.readLock().unlock();
         }
 
+        // If not specified on the Wrapper, check the Context
+        if (getParent() instanceof Context) {
+            Context context = (Context) getParent();
+            if (reference != null) {
+                reference = context.findRoleMapping(reference);
+            } else {
+                reference = context.findRoleMapping(name);
+            }
+        }
+
+        return reference;
     }
 
 
@@ -1002,7 +1030,7 @@ public class StandardWrapper extends ContainerBase
                 jspMonitorON = new ObjectName(oname.toString());
                 Registry.getRegistry(null, null).registerComponent(instance, jspMonitorON, null);
             } catch (Exception ex) {
-                log.warn("Error registering JSP monitoring with jmx " + instance);
+                log.warn(sm.getString("standardWrapper.jspMonitorError", instance));
             }
         }
     }
@@ -1019,8 +1047,9 @@ public class StandardWrapper extends ContainerBase
     public synchronized Servlet loadServlet() throws ServletException {
 
         // Nothing to do if we already have an instance or an instance pool
-        if (!singleThreadModel && (instance != null))
+        if (!singleThreadModel && (instance != null)) {
             return instance;
+        }
 
         PrintStream out = System.out;
         if (swallowOutput) {
@@ -1119,7 +1148,9 @@ public class StandardWrapper extends ContainerBase
     private synchronized void initServlet(Servlet servlet)
             throws ServletException {
 
-        if (instanceInitialized && !singleThreadModel) return;
+        if (instanceInitialized && !singleThreadModel) {
+            return;
+        }
 
         // Call the initialization method of this servlet
         try {
@@ -1152,7 +1183,7 @@ public class StandardWrapper extends ContainerBase
             throw f;
         } catch (Throwable f) {
             ExceptionUtils.handleThrowable(f);
-            getServletContext().log("StandardWrapper.Throwable", f );
+            getServletContext().log(sm.getString("standardWrapper.initException", getName()), f);
             // If the servlet wanted to be unavailable it would have
             // said so, so do not call unavailable(null).
             throw new ServletException
@@ -1193,8 +1224,9 @@ public class StandardWrapper extends ContainerBase
         } finally {
             mappingsLock.writeLock().unlock();
         }
-        if(parent.getState().equals(LifecycleState.STARTED))
+        if(parent.getState().equals(LifecycleState.STARTED)) {
             fireContainerEvent(REMOVE_MAPPING_EVENT, mapping);
+        }
 
     }
 
@@ -1228,14 +1260,16 @@ public class StandardWrapper extends ContainerBase
     @Override
     public void unavailable(UnavailableException unavailable) {
         getServletContext().log(sm.getString("standardWrapper.unavailable", getName()));
-        if (unavailable == null)
+        if (unavailable == null) {
             setAvailable(Long.MAX_VALUE);
-        else if (unavailable.isPermanent())
+        } else if (unavailable.isPermanent()) {
             setAvailable(Long.MAX_VALUE);
-        else {
+        } else {
             int unavailableSeconds = unavailable.getUnavailableSeconds();
             if (unavailableSeconds <= 0)
+             {
                 unavailableSeconds = 60;        // Arbitrary default
+            }
             setAvailable(System.currentTimeMillis() +
                          (unavailableSeconds * 1000L));
         }
@@ -1257,8 +1291,9 @@ public class StandardWrapper extends ContainerBase
     public synchronized void unload() throws ServletException {
 
         // Nothing to do if we have never loaded the instance
-        if (!singleThreadModel && (instance == null))
+        if (!singleThreadModel && (instance == null)) {
             return;
+        }
         unloading = true;
 
         // Loaf a while if the current instance is allocated
@@ -1394,9 +1429,7 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public String getInitParameter(String name) {
-
-        return (findInitParameter(name));
-
+        return findInitParameter(name);
     }
 
 
@@ -1422,14 +1455,13 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public ServletContext getServletContext() {
-
-        if (parent == null)
-            return (null);
-        else if (!(parent instanceof Context))
-            return (null);
-        else
-            return (((Context) parent).getServletContext());
-
+        if (parent == null) {
+            return null;
+        } else if (!(parent instanceof Context)) {
+            return null;
+        } else {
+            return ((Context) parent).getServletContext();
+        }
     }
 
 
@@ -1438,9 +1470,7 @@ public class StandardWrapper extends ContainerBase
      */
     @Override
     public String getServletName() {
-
-        return (getName());
-
+        return getName();
     }
 
     public long getProcessingTime() {
@@ -1736,47 +1766,36 @@ public class StandardWrapper extends ContainerBase
 
     /**
      * Get JMX Broadcaster Info
-     * FIXME: This two events we not send j2ee.state.failed and j2ee.attribute.changed!
      * @see javax.management.NotificationBroadcaster#getNotificationInfo()
      */
     @Override
     public MBeanNotificationInfo[] getNotificationInfo() {
-
-        if(notificationInfo == null) {
-            notificationInfo = new MBeanNotificationInfo[]{
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.created"},
-                    Notification.class.getName(),
-                    "servlet is created"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.starting"},
-                    Notification.class.getName(),
-                    "servlet is starting"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.running"},
-                    Notification.class.getName(),
-                    "servlet is running"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.stopped"},
-                    Notification.class.getName(),
-                    "servlet start to stopped"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.stopped"},
-                    Notification.class.getName(),
-                    "servlet is stopped"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.deleted"},
-                    Notification.class.getName(),
-                    "servlet is deleted"
-                    )
-            };
+        // FIXME: we not send j2ee.state.failed
+        // FIXME: we not send j2ee.attribute.changed
+        if (notificationInfo == null) {
+            notificationInfo = new MBeanNotificationInfo[] {
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.created" },
+                            Notification.class.getName(), "servlet is created"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.starting" },
+                            Notification.class.getName(),
+                            "servlet is starting"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.running" },
+                            Notification.class.getName(), "servlet is running"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.stopped" },
+                            Notification.class.getName(),
+                            "servlet start to stopped"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.stopped" },
+                            Notification.class.getName(), "servlet is stopped"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.deleted" },
+                            Notification.class.getName(),
+                            "servlet is deleted") };
         }
-
         return notificationInfo;
     }
 

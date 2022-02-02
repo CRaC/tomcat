@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.PrintWriter;
@@ -41,14 +40,16 @@ public class WatchedResourceSF extends StoreFactoryBase {
             String[] resources = ((StandardContext) aElement)
                     .findWatchedResources();
             if (elementDesc != null) {
-                if (log.isDebugEnabled())
+                if (log.isDebugEnabled()) {
                     log.debug("store " + elementDesc.getTag() + "( " + aElement
                             + " )");
+                }
                 getStoreAppender().printTagArray(aWriter, "WatchedResource",
                         indent, resources);
             }
-        } else
+        } else {
             log.warn("Descriptor for element" + aElement.getClass()
                     + ".[WatchedResource] not configured!");
+        }
     }
 }

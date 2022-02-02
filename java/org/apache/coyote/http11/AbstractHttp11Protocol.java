@@ -26,17 +26,26 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.management.ObjectInstance;
+import javax.management.ObjectName;
 import javax.servlet.http.HttpUpgradeHandler;
 
 import org.apache.coyote.AbstractProtocol;
 import org.apache.coyote.CompressionConfig;
+import org.apache.coyote.ContinueResponseTiming;
 import org.apache.coyote.Processor;
+import org.apache.coyote.Request;
+import org.apache.coyote.Response;
 import org.apache.coyote.UpgradeProtocol;
 import org.apache.coyote.UpgradeToken;
 import org.apache.coyote.http11.upgrade.InternalHttpUpgradeHandler;
+import org.apache.coyote.http11.upgrade.UpgradeGroupInfo;
 import org.apache.coyote.http11.upgrade.UpgradeProcessorExternal;
 import org.apache.coyote.http11.upgrade.UpgradeProcessorInternal;
+import org.apache.coyote.http2.Http2Protocol;
 import org.apache.tomcat.util.buf.StringUtils;
+import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomcat.util.modeler.Util;
 import org.apache.tomcat.util.net.AbstractEndpoint;
 import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.SocketWrapperBase;
@@ -61,11 +70,41 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
     @Override
     public void init() throws Exception {
+        // Upgrade protocols have to be configured first since the endpoint
+        // init (triggered via super.init() below) uses this list to configure
+        // the list of ALPN protocols to advertise
         for (UpgradeProtocol upgradeProtocol : upgradeProtocols) {
             configureUpgradeProtocol(upgradeProtocol);
         }
 
         super.init();
+
+        // Set the Http11Protocol (i.e. this) for any upgrade protocols once
+        // this has completed initialisation as the upgrade protocols may expect this
+        // to be initialised when the call is made
+        for (UpgradeProtocol upgradeProtocol : upgradeProtocols) {
+            if (upgradeProtocol instanceof Http2Protocol) {
+                ((Http2Protocol) upgradeProtocol).setHttp11Protocol(this);
+            }
+        }
+    }
+
+
+    @Override
+    public void destroy() throws Exception {
+        // There may be upgrade protocols with their own MBeans. These need to
+        // be de-registered.
+        ObjectName rgOname = getGlobalRequestProcessorMBeanName();
+        if (rgOname != null) {
+            Registry registry = Registry.getRegistry(null, null);
+            ObjectName query = new ObjectName(rgOname.getCanonicalName() + ",Upgrade=*");
+            Set<ObjectInstance> upgrades = registry.getMBeanServer().queryMBeans(query, null);
+            for (ObjectInstance upgrade : upgrades) {
+                registry.unregisterComponent(upgrade.getObjectName());
+            }
+        }
+
+        super.destroy();
     }
 
 
@@ -88,6 +127,27 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
     // ------------------------------------------------ HTTP specific properties
     // ------------------------------------------ managed in the ProtocolHandler
+
+    private ContinueResponseTiming continueResponseTiming = ContinueResponseTiming.IMMEDIATELY;
+    public String getContinueResponseTiming() {
+        return continueResponseTiming.toString();
+    }
+    public void setContinueResponseTiming(String continueResponseTiming) {
+        this.continueResponseTiming = ContinueResponseTiming.fromString(continueResponseTiming);
+    }
+    public ContinueResponseTiming getContinueResponseTimingInternal() {
+        return continueResponseTiming;
+    }
+
+
+    private boolean useKeepAliveResponseHeader = true;
+    public boolean getUseKeepAliveResponseHeader() {
+        return useKeepAliveResponseHeader;
+    }
+    public void setUseKeepAliveResponseHeader(boolean useKeepAliveResponseHeader) {
+        this.useKeepAliveResponseHeader = useKeepAliveResponseHeader;
+    }
+
 
     private String relaxedPathChars = null;
     public String getRelaxedPathChars() {
@@ -130,37 +190,79 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     }
 
 
-    private boolean rejectIllegalHeaderName = false;
+    private boolean rejectIllegalHeader = false;
     /**
-     * If an HTTP request is received that contains an illegal header name (i.e.
-     * the header name is not a token) will the request be rejected (with a 400
-     * response) or will the illegal header be ignored.
+     * If an HTTP request is received that contains an illegal header name or
+     * value (e.g. the header name is not a token) will the request be rejected
+     * (with a 400 response) or will the illegal header be ignored?
      *
      * @return {@code true} if the request will be rejected or {@code false} if
      *         the header will be ignored
      */
-    public boolean getRejectIllegalHeaderName() { return rejectIllegalHeaderName; }
+    public boolean getRejectIllegalHeader() { return rejectIllegalHeader; }
     /**
-     * If an HTTP request is received that contains an illegal header name (i.e.
-     * the header name is not a token) should the request be rejected (with a
-     * 400 response) or should the illegal header be ignored.
+     * If an HTTP request is received that contains an illegal header name or
+     * value (e.g. the header name is not a token) should the request be
+     * rejected (with a 400 response) or should the illegal header be ignored?
+     *
+     * @param rejectIllegalHeader   {@code true} to reject requests with illegal
+     *                              header names or values, {@code false} to
+     *                              ignore the header
+     */
+    public void setRejectIllegalHeader(boolean rejectIllegalHeader) {
+        this.rejectIllegalHeader = rejectIllegalHeader;
+    }
+    /**
+     * If an HTTP request is received that contains an illegal header name or
+     * value (e.g. the header name is not a token) will the request be rejected
+     * (with a 400 response) or will the illegal header be ignored?
+     *
+     * @return {@code true} if the request will be rejected or {@code false} if
+     *         the header will be ignored
+     *
+     * @deprecated Now an alias for {@link #getRejectIllegalHeader()}. Will be
+     *             removed in Tomcat 10 onwards.
+     */
+    @Deprecated
+    public boolean getRejectIllegalHeaderName() { return rejectIllegalHeader; }
+    /**
+     * If an HTTP request is received that contains an illegal header name or
+     * value (e.g. the header name is not a token) should the request be
+     * rejected (with a 400 response) or should the illegal header be ignored?
      *
      * @param rejectIllegalHeaderName   {@code true} to reject requests with
-     *                                  illegal header names, {@code false} to
-     *                                  ignore the header
+     *                                  illegal header names or values,
+     *                                  {@code false} to ignore the header
+     *
+     * @deprecated Now an alias for {@link #setRejectIllegalHeader(boolean)}.
+     *             Will be removed in Tomcat 10 onwards.
      */
+    @Deprecated
     public void setRejectIllegalHeaderName(boolean rejectIllegalHeaderName) {
-        this.rejectIllegalHeaderName = rejectIllegalHeaderName;
+        this.rejectIllegalHeader = rejectIllegalHeaderName;
     }
 
 
-    /**
-     * Maximum size of the post which will be saved when processing certain
-     * requests, such as a POST.
-     */
     private int maxSavePostSize = 4 * 1024;
+    /**
+     * Return the maximum size of the post which will be saved during FORM or
+     * CLIENT-CERT authentication.
+     *
+     * @return The size in bytes
+     */
     public int getMaxSavePostSize() { return maxSavePostSize; }
-    public void setMaxSavePostSize(int valueI) { maxSavePostSize = valueI; }
+    /**
+     * Set the maximum size of a POST which will be buffered during FORM or
+     * CLIENT-CERT authentication. When a POST is received where the security
+     * constraints require a client certificate, the POST body needs to be
+     * buffered while an SSL handshake takes place to obtain the certificate. A
+     * similar buffering is required during FDORM auth.
+     *
+     * @param maxSavePostSize The maximum size POST body to buffer in bytes
+     */
+    public void setMaxSavePostSize(int maxSavePostSize) {
+        this.maxSavePostSize = maxSavePostSize;
+    }
 
 
     /**
@@ -171,41 +273,58 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public void setMaxHttpHeaderSize(int valueI) { maxHttpHeaderSize = valueI; }
 
 
-    /**
-     * Specifies a different (usually  longer) connection timeout during data
-     * upload.
-     */
     private int connectionUploadTimeout = 300000;
+    /**
+     * Specifies a different (usually longer) connection timeout during data
+     * upload. Default is 5 minutes as in Apache HTTPD server.
+     *
+     * @return The timeout in milliseconds
+     */
     public int getConnectionUploadTimeout() { return connectionUploadTimeout; }
-    public void setConnectionUploadTimeout(int i) {
-        connectionUploadTimeout = i;
+    /**
+     * Set the upload timeout.
+     *
+     * @param timeout Upload timeout in milliseconds
+     */
+    public void setConnectionUploadTimeout(int timeout) {
+        connectionUploadTimeout = timeout;
     }
 
 
-    /**
-     * If true, the connectionUploadTimeout will be ignored and the regular
-     * socket timeout will be used for the full duration of the connection.
-     */
     private boolean disableUploadTimeout = true;
+    /**
+     * Get the flag that controls upload time-outs. If true, the
+     * connectionUploadTimeout will be ignored and the regular socket timeout
+     * will be used for the full duration of the connection.
+     *
+     * @return {@code true} if the separate upload timeout is disabled
+     */
     public boolean getDisableUploadTimeout() { return disableUploadTimeout; }
+    /**
+     * Set the flag to control whether a separate connection timeout is used
+     * during upload of a request body.
+     *
+     * @param isDisabled {@code true} if the separate upload timeout should be
+     *                   disabled
+     */
     public void setDisableUploadTimeout(boolean isDisabled) {
         disableUploadTimeout = isDisabled;
     }
 
 
+    public void setCompression(String compression) {
+        compressionConfig.setCompression(compression);
+    }
     public String getCompression() {
         return compressionConfig.getCompression();
-    }
-    public void setCompression(String valueS) {
-        compressionConfig.setCompression(valueS);
     }
 
 
     public String getNoCompressionUserAgents() {
         return compressionConfig.getNoCompressionUserAgents();
     }
-    public void setNoCompressionUserAgents(String valueS) {
-        compressionConfig.setNoCompressionUserAgents(valueS);
+    public void setNoCompressionUserAgents(String noCompressionUserAgents) {
+        compressionConfig.setNoCompressionUserAgents(noCompressionUserAgents);
     }
 
 
@@ -249,8 +368,23 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public int getCompressionMinSize() {
         return compressionConfig.getCompressionMinSize();
     }
-    public void setCompressionMinSize(int valueI) {
-        compressionConfig.setCompressionMinSize(valueI);
+    public void setCompressionMinSize(int compressionMinSize) {
+        compressionConfig.setCompressionMinSize(compressionMinSize);
+    }
+
+
+    @Deprecated
+    public boolean getNoCompressionStrongETag() {
+        return compressionConfig.getNoCompressionStrongETag();
+    }
+    @Deprecated
+    public void setNoCompressionStrongETag(boolean noCompressionStrongETag) {
+        compressionConfig.setNoCompressionStrongETag(noCompressionStrongETag);
+    }
+
+
+    public boolean useCompression(Request request, Response response) {
+        return compressionConfig.useCompression(request, response);
     }
 
 
@@ -265,17 +399,27 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     }
 
 
-    /**
-     * Server header.
-     */
     private String server;
     public String getServer() { return server; }
-    public void setServer( String server ) {
+    /**
+     * Set the server header name.
+     *
+     * @param server The new value to use for the server header
+     */
+    public void setServer(String server) {
         this.server = server;
     }
 
 
     private boolean serverRemoveAppProvidedValues = false;
+    /**
+     * Should application provider values for the HTTP Server header be removed.
+     * Note that if {@link #server} is set, any application provided value will
+     * be over-ridden.
+     *
+     * @return {@code true} if application provided values should be removed,
+     *         otherwise {@code false}
+     */
     public boolean getServerRemoveAppProvidedValues() { return serverRemoveAppProvidedValues; }
     public void setServerRemoveAppProvidedValues(boolean serverRemoveAppProvidedValues) {
         this.serverRemoveAppProvidedValues = serverRemoveAppProvidedValues;
@@ -333,8 +477,7 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public void setAllowedTrailerHeaders(String commaSeparatedHeaders) {
         // Jump through some hoops so we don't end up with an empty set while
         // doing updates.
-        Set<String> toRemove = new HashSet<>();
-        toRemove.addAll(allowedTrailerHeaders);
+        Set<String> toRemove = new HashSet<>(allowedTrailerHeaders);
         if (commaSeparatedHeaders != null) {
             String[] headers = commaSeparatedHeaders.split(",");
             for (String header : headers) {
@@ -348,11 +491,13 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
             allowedTrailerHeaders.removeAll(toRemove);
         }
     }
+    protected Set<String> getAllowedTrailerHeadersInternal() {
+        return allowedTrailerHeaders;
+    }
     public String getAllowedTrailerHeaders() {
-        // Chances of a size change between these lines are small enough that a
-        // sync is unnecessary.
-        List<String> copy = new ArrayList<>(allowedTrailerHeaders.size());
-        copy.addAll(allowedTrailerHeaders);
+        // Chances of a change during execution of this line are small enough
+        // that a sync is unnecessary.
+        List<String> copy = new ArrayList<>(allowedTrailerHeaders);
         return StringUtils.join(copy);
     }
     public void addAllowedTrailerHeader(String header) {
@@ -379,6 +524,7 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public UpgradeProtocol[] findUpgradeProtocols() {
         return upgradeProtocols.toArray(new UpgradeProtocol[0]);
     }
+
 
     /**
      * The protocols that are available via internal Tomcat support for access
@@ -432,6 +578,66 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     }
 
 
+    /**
+     * Map of upgrade protocol name to {@link UpgradeGroupInfo} instance.
+     * <p>
+     * HTTP upgrades via
+     * {@link javax.servlet.http.HttpServletRequest#upgrade(Class)} do not have
+     * to depend on an {@code UpgradeProtocol}. To enable basic statistics to be
+     * made available for these protocols, a map of protocol name to
+     * {@link UpgradeGroupInfo} instances is maintained here.
+     */
+    private final Map<String,UpgradeGroupInfo> upgradeProtocolGroupInfos = new ConcurrentHashMap<>();
+    public UpgradeGroupInfo getUpgradeGroupInfo(String upgradeProtocol) {
+        if (upgradeProtocol == null) {
+            return null;
+        }
+        UpgradeGroupInfo result = upgradeProtocolGroupInfos.get(upgradeProtocol);
+        if (result == null) {
+            // Protecting against multiple JMX registration, not modification
+            // of the Map.
+            synchronized (upgradeProtocolGroupInfos) {
+                result = upgradeProtocolGroupInfos.get(upgradeProtocol);
+                if (result == null) {
+                    result = new UpgradeGroupInfo();
+                    upgradeProtocolGroupInfos.put(upgradeProtocol, result);
+                    ObjectName oname = getONameForUpgrade(upgradeProtocol);
+                    if (oname != null) {
+                        try {
+                            Registry.getRegistry(null, null).registerComponent(result, oname, null);
+                        } catch (Exception e) {
+                            getLog().warn(sm.getString("abstractHttp11Protocol.upgradeJmxRegistrationFail"), e);
+                            result = null;
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+
+    public ObjectName getONameForUpgrade(String upgradeProtocol) {
+        ObjectName oname = null;
+        ObjectName parentRgOname = getGlobalRequestProcessorMBeanName();
+        if (parentRgOname != null) {
+            StringBuilder name = new StringBuilder(parentRgOname.getCanonicalName());
+            name.append(",Upgrade=");
+            if (Util.objectNameValueNeedsQuote(upgradeProtocol)) {
+                name.append(ObjectName.quote(upgradeProtocol));
+            } else {
+                name.append(upgradeProtocol);
+            }
+            try {
+                oname = new ObjectName(name.toString());
+            } catch (Exception e) {
+                getLog().warn(sm.getString("abstractHttp11Protocol.upgradeJmxNameFail"), e);
+            }
+        }
+        return oname;
+    }
+
+
     // ------------------------------------------------ HTTP specific properties
     // ------------------------------------------ passed through to the EndPoint
 
@@ -453,6 +659,13 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
     public int getMaxKeepAliveRequests() {
         return getEndpoint().getMaxKeepAliveRequests();
     }
+    /**
+     * Set the maximum number of Keep-Alive requests to allow.
+     * This is to safeguard from DoS attacks. Setting to a negative
+     * value disables the limit.
+     *
+     * @param mkar The new maximum number of Keep-Alive requests allowed
+     */
     public void setMaxKeepAliveRequests(int mkar) {
         getEndpoint().setMaxKeepAliveRequests(mkar);
     }
@@ -870,26 +1083,15 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
     // ------------------------------------------------------------- Common code
 
-    @SuppressWarnings("deprecation")
     @Override
     protected Processor createProcessor() {
-        Http11Processor processor = new Http11Processor(getMaxHttpHeaderSize(),
-                getAllowHostHeaderMismatch(), getRejectIllegalHeaderName(), getEndpoint(),
-                getMaxTrailerSize(), allowedTrailerHeaders, getMaxExtensionSize(),
-                getMaxSwallowSize(), httpUpgradeProtocols, getSendReasonPhrase(),
-                relaxedPathChars, relaxedQueryChars);
+        Http11Processor processor = new Http11Processor(this, getEndpoint());
         processor.setAdapter(getAdapter());
         processor.setMaxKeepAliveRequests(getMaxKeepAliveRequests());
         processor.setConnectionUploadTimeout(getConnectionUploadTimeout());
         processor.setDisableUploadTimeout(getDisableUploadTimeout());
-        processor.setCompressionMinSize(getCompressionMinSize());
-        processor.setCompression(getCompression());
-        processor.setNoCompressionUserAgents(getNoCompressionUserAgents());
-        processor.setCompressibleMimeTypes(getCompressibleMimeTypes());
         processor.setRestrictedUserAgents(getRestrictedUserAgents());
         processor.setMaxSavePostSize(getMaxSavePostSize());
-        processor.setServer(getServer());
-        processor.setServerRemoveAppProvidedValues(getServerRemoveAppProvidedValues());
         return processor;
     }
 
@@ -900,9 +1102,9 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
             UpgradeToken upgradeToken) {
         HttpUpgradeHandler httpUpgradeHandler = upgradeToken.getHttpUpgradeHandler();
         if (httpUpgradeHandler instanceof InternalHttpUpgradeHandler) {
-            return new UpgradeProcessorInternal(socket, upgradeToken);
+            return new UpgradeProcessorInternal(socket, upgradeToken, getUpgradeGroupInfo(upgradeToken.getProtocol()));
         } else {
-            return new UpgradeProcessorExternal(socket, upgradeToken);
+            return new UpgradeProcessorExternal(socket, upgradeToken, getUpgradeGroupInfo(upgradeToken.getProtocol()));
         }
     }
 }

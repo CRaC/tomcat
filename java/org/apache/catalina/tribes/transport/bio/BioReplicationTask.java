@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport.bio;
 
 import java.io.InputStream;
@@ -59,7 +58,9 @@ public class BioReplicationTask extends AbstractRxTask {
     @Override
     public synchronized void run()
     {
-        if ( socket == null ) return;
+        if ( socket == null ) {
+            return;
+        }
         try {
             drainSocket();
         } catch ( Exception x ) {
@@ -83,7 +84,9 @@ public class BioReplicationTask extends AbstractRxTask {
             socket = null;
         }
         // done, ready for more, return to pool
-        if ( getTaskPool() != null ) getTaskPool().returnWorker (this);
+        if ( getTaskPool() != null ) {
+            getTaskPool().returnWorker (this);
+        }
     }
 
 
@@ -103,7 +106,9 @@ public class BioReplicationTask extends AbstractRxTask {
                  * server before completing the request
                  * This is considered an asynchronous request
                  */
-                if (ChannelData.sendAckAsync(msgs[i].getOptions())) sendAck(Constants.ACK_COMMAND);
+                if (ChannelData.sendAckAsync(msgs[i].getOptions())) {
+                    sendAck(Constants.ACK_COMMAND);
+                }
                 try {
                     //process the message
                     getCallback().messageDataReceived(msgs[i]);
@@ -112,9 +117,13 @@ public class BioReplicationTask extends AbstractRxTask {
                      * server before sending the ack to the remote server
                      * This is considered a synchronized request
                      */
-                    if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(Constants.ACK_COMMAND);
+                    if (ChannelData.sendAckSync(msgs[i].getOptions())) {
+                        sendAck(Constants.ACK_COMMAND);
+                    }
                 }catch  ( Exception x ) {
-                    if (ChannelData.sendAckSync(msgs[i].getOptions())) sendAck(Constants.FAIL_ACK_COMMAND);
+                    if (ChannelData.sendAckSync(msgs[i].getOptions())) {
+                        sendAck(Constants.FAIL_ACK_COMMAND);
+                    }
                     log.error(sm.getString("bioReplicationTask.messageDataReceived.error"),x);
                 }
                 if ( getUseBufferPool() ) {
@@ -143,7 +152,9 @@ public class BioReplicationTask extends AbstractRxTask {
         int length = in.read(buf);
         while ( length >= 0 ) {
             int count = reader.append(buf,0,length,true);
-            if ( count > 0 ) execute(reader);
+            if ( count > 0 ) {
+                execute(reader);
+            }
             length = in.read(buf);
         }
     }

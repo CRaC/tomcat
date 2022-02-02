@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.tribes.io;
 
 import java.io.IOException;
@@ -84,15 +82,17 @@ public final class ReplicationStream extends ObjectInputStream {
 
         boolean tryRepFirst = name.startsWith("org.apache.catalina.tribes");
             try {
-            if (tryRepFirst)
+            if (tryRepFirst) {
                 return findReplicationClass(name);
-            else
+            } else {
                 return findExternalClass(name);
+            }
         } catch (Exception x) {
-            if (tryRepFirst)
+            if (tryRepFirst) {
                 return findExternalClass(name);
-            else
+            } else {
                 return findReplicationClass(name);
+            }
         }
     }
 
@@ -117,7 +117,9 @@ public final class ReplicationStream extends ObjectInputStream {
         Class<?>[] classObjs = new Class[interfaces.length];
         for (int i = 0; i < interfaces.length; i++) {
             Class<?> cl = this.resolveClass(interfaces[i]);
-            if (latestLoader==null) latestLoader = cl.getClassLoader();
+            if (latestLoader==null) {
+                latestLoader = cl.getClassLoader();
+            }
             if ((cl.getModifiers() & Modifier.PUBLIC) == 0) {
                 if (hasNonPublicInterface) {
                     if (nonPublicLoader != cl.getClassLoader()) {
@@ -148,16 +150,19 @@ public final class ReplicationStream extends ObjectInputStream {
 
     public Class<?> findExternalClass(String name) throws ClassNotFoundException  {
         ClassNotFoundException cnfe = null;
-        for (int i=0; i<classLoaders.length; i++ ) {
+        for (ClassLoader classLoader : classLoaders) {
             try {
-                Class<?> clazz = Class.forName(name, false, classLoaders[i]);
+                Class<?> clazz = Class.forName(name, false, classLoader);
                 return clazz;
-            } catch ( ClassNotFoundException x ) {
+            } catch (ClassNotFoundException x) {
                 cnfe = x;
             }
         }
-        if ( cnfe != null ) throw cnfe;
-        else throw new ClassNotFoundException(name);
+        if ( cnfe != null ) {
+            throw cnfe;
+        } else {
+            throw new ClassNotFoundException(name);
+        }
     }
 
     @Override

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.runtime;
 
 import javax.servlet.ServletConfig;
@@ -53,8 +52,9 @@ public class TagHandlerPool {
                 result = null;
             }
         }
-        if (result == null)
+        if (result == null) {
             result = new TagHandlerPool();
+        }
         result.init(config);
 
         return result;
@@ -155,17 +155,21 @@ public class TagHandlerPool {
 
     protected static String getOption(ServletConfig config, String name,
             String defaultV) {
-        if (config == null)
+        if (config == null) {
             return defaultV;
+        }
 
         String value = config.getInitParameter(name);
-        if (value != null)
+        if (value != null) {
             return value;
-        if (config.getServletContext() == null)
+        }
+        if (config.getServletContext() == null) {
             return defaultV;
+        }
         value = config.getServletContext().getInitParameter(name);
-        if (value != null)
+        if (value != null) {
             return value;
+        }
         return defaultV;
     }
 

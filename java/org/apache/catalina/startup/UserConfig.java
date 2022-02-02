@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.startup;
 
 
@@ -116,9 +114,7 @@ public final class UserConfig
      * @return the Context configuration class name.
      */
     public String getConfigClass() {
-
-        return (this.configClass);
-
+        return this.configClass;
     }
 
 
@@ -128,9 +124,7 @@ public final class UserConfig
      * @param configClass The new Context configuration class name.
      */
     public void setConfigClass(String configClass) {
-
         this.configClass = configClass;
-
     }
 
 
@@ -138,9 +132,7 @@ public final class UserConfig
      * @return the Context implementation class name.
      */
     public String getContextClass() {
-
-        return (this.contextClass);
-
+        return this.contextClass;
     }
 
 
@@ -150,9 +142,7 @@ public final class UserConfig
      * @param contextClass The new Context implementation class name.
      */
     public void setContextClass(String contextClass) {
-
         this.contextClass = contextClass;
-
     }
 
 
@@ -160,9 +150,7 @@ public final class UserConfig
      * @return the directory name for user web applications.
      */
     public String getDirectoryName() {
-
-        return (this.directoryName);
-
+        return this.directoryName;
     }
 
 
@@ -172,9 +160,7 @@ public final class UserConfig
      * @param directoryName The new directory name
      */
     public void setDirectoryName(String directoryName) {
-
         this.directoryName = directoryName;
-
     }
 
 
@@ -182,9 +168,7 @@ public final class UserConfig
      * @return the base directory containing user home directories.
      */
     public String getHomeBase() {
-
-        return (this.homeBase);
-
+        return this.homeBase;
     }
 
 
@@ -194,9 +178,7 @@ public final class UserConfig
      * @param homeBase The new base directory
      */
     public void setHomeBase(String homeBase) {
-
         this.homeBase = homeBase;
-
     }
 
 
@@ -204,9 +186,7 @@ public final class UserConfig
      * @return the user database class name for this component.
      */
     public String getUserClass() {
-
-        return (this.userClass);
-
+        return this.userClass;
     }
 
 
@@ -215,16 +195,16 @@ public final class UserConfig
      * @param userClass The user database class name
      */
     public void setUserClass(String userClass) {
-
         this.userClass = userClass;
-
     }
 
     /**
      * @return the regular expression used to test for user who deployment is allowed.
      */
     public String getAllow() {
-        if (allow == null) return null;
+        if (allow == null) {
+            return null;
+        }
         return allow.toString();
     }
 
@@ -247,7 +227,9 @@ public final class UserConfig
      * @return the regular expression used to test for user who deployment is denied.
      */
     public String getDeny() {
-        if (deny == null) return null;
+        if (deny == null) {
+            return null;
+        }
         return deny.toString();
     }
 
@@ -285,10 +267,11 @@ public final class UserConfig
         }
 
         // Process the event that has occurred
-        if (event.getType().equals(Lifecycle.START_EVENT))
+        if (event.getType().equals(Lifecycle.START_EVENT)) {
             start();
-        else if (event.getType().equals(Lifecycle.STOP_EVENT))
+        } else if (event.getType().equals(Lifecycle.STOP_EVENT)) {
             stop();
+        }
 
     }
 
@@ -302,8 +285,9 @@ public final class UserConfig
      */
     private void deploy() {
 
-        if (host.getLogger().isDebugEnabled())
+        if (host.getLogger().isDebugEnabled()) {
             host.getLogger().debug(sm.getString("userConfig.deploying"));
+        }
 
         // Load the user database object for this host
         UserDatabase database = null;
@@ -323,7 +307,9 @@ public final class UserConfig
         Enumeration<String> users = database.getUsers();
         while (users.hasMoreElements()) {
             String user = users.nextElement();
-            if (!isDeployAllowed(user)) continue;
+            if (!isDeployAllowed(user)) {
+                continue;
+            }
             String home = database.getHome(user);
             results.add(executor.submit(new DeployUserDirectory(this, user, home)));
         }
@@ -349,11 +335,13 @@ public final class UserConfig
 
         // Does this user have a web application to be deployed?
         String contextPath = "/~" + user;
-        if (host.findChild(contextPath) != null)
+        if (host.findChild(contextPath) != null) {
             return;
+        }
         File app = new File(home, directoryName);
-        if (!app.exists() || !app.isDirectory())
+        if (!app.exists() || !app.isDirectory()) {
             return;
+        }
 
         host.getLogger().info(sm.getString("userConfig.deploy", user));
 
@@ -379,8 +367,9 @@ public final class UserConfig
      */
     private void start() {
 
-        if (host.getLogger().isDebugEnabled())
+        if (host.getLogger().isDebugEnabled()) {
             host.getLogger().debug(sm.getString("userConfig.start"));
+        }
 
         deploy();
 
@@ -392,8 +381,9 @@ public final class UserConfig
      */
     private void stop() {
 
-        if (host.getLogger().isDebugEnabled())
+        if (host.getLogger().isDebugEnabled()) {
             host.getLogger().debug(sm.getString("userConfig.stop"));
+        }
 
     }
 

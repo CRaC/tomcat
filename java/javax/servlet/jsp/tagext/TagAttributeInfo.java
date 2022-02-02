@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet.jsp.tagext;
 
 /**
@@ -27,11 +26,11 @@ package javax.servlet.jsp.tagext;
  */
 
 public class TagAttributeInfo {
+
     /**
      * "id" is wired in to be ID. There is no real benefit in having it be
      * something else IDREFs are not handled any differently.
      */
-
     public static final String ID = "id";
 
     /**
@@ -69,7 +68,7 @@ public class TagAttributeInfo {
      * @param fragment
      *            Whether this attribute is of type JspFragment
      *
-     * @since 2.0
+     * @since JSP 2.0
      */
     public TagAttributeInfo(String name, boolean required, String type,
             boolean reqTime, boolean fragment) {
@@ -129,7 +128,6 @@ public class TagAttributeInfo {
      *
      * @return the name of the attribute
      */
-
     public String getName() {
         return name;
     }
@@ -139,7 +137,6 @@ public class TagAttributeInfo {
      *
      * @return the type of the attribute
      */
-
     public String getTypeName() {
         return type;
     }
@@ -149,7 +146,6 @@ public class TagAttributeInfo {
      *
      * @return if the attribute can hold a request-time value.
      */
-
     public boolean canBeRequestTime() {
         return reqTime;
     }
@@ -167,14 +163,14 @@ public class TagAttributeInfo {
      * Convenience static method that goes through an array of TagAttributeInfo
      * objects and looks for "id".
      *
-     * @param a
+     * @param tagAttributeInfos
      *            An array of TagAttributeInfo
      * @return The TagAttributeInfo reference with name "id"
      */
-    public static TagAttributeInfo getIdAttribute(TagAttributeInfo a[]) {
-        for (int i = 0; i < a.length; i++) {
-            if (a[i].getName().equals(ID)) {
-                return a[i];
+    public static TagAttributeInfo getIdAttribute(TagAttributeInfo[] tagAttributeInfos) {
+        for (TagAttributeInfo tagAttributeInfo : tagAttributeInfos) {
+            if (tagAttributeInfo.getName().equals(ID)) {
+                return tagAttributeInfo;
             }
         }
         return null; // no such attribute
@@ -185,7 +181,7 @@ public class TagAttributeInfo {
      *
      * @return if the attribute is of type JspFragment
      *
-     * @since 2.0
+     * @since JSP 2.0
      */
     public boolean isFragment() {
         return fragment;
@@ -241,22 +237,51 @@ public class TagAttributeInfo {
 
     private final String methodSignature;
 
+    /**
+     * Does the attribute expect to be passed a deferred method?
+     *
+     * @return {@code true} if a deferred method expression is expected,
+     *         otherwise {@code false}
+     */
     public boolean isDeferredMethod() {
         return deferredMethod;
     }
 
+    /**
+     * Does the attribute expect to be passed a deferred value?
+     *
+     * @return {@code true} if a deferred value expression is expected,
+     *         otherwise {@code false}
+     */
     public boolean isDeferredValue() {
         return deferredValue;
     }
 
+    /**
+     * Obtain the description for the attribute,
+     *
+     * @return the description
+     */
     public String getDescription() {
         return description;
     }
 
+    /**
+     * Obtain the type name, as a string, expected by this attribute.
+     *
+     * @return the type name, as a string
+     */
     public String getExpectedTypeName() {
         return expectedTypeName;
     }
 
+    /**
+     * If this is a deferred method attribute, obtain the expected method
+     * signature.
+     *
+     * @return The expected method signature or {@code null} if this attribute
+     *         is not a deferred method attribute
+     */
     public String getMethodSignature() {
         return methodSignature;
     }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.realm;
 
 import java.security.Principal;
@@ -27,6 +26,7 @@ import org.apache.catalina.LifecycleException;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.ietf.jgss.GSSContext;
+import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
 import org.ietf.jgss.GSSName;
 
@@ -93,7 +93,7 @@ public class LockOutRealm extends CombinedRealm {
      *  that prevents this component from being used
      */
     @Override
-    protected void startInternal() throws LifecycleException {
+    protected synchronized void startInternal() throws LifecycleException {
         // Configure the list of failed users to delete the oldest entry once it
         // exceeds the specified size
         failedUsers = new LinkedHashMap<String, LockRecord>(cacheSize, 0.75f,
@@ -203,6 +203,18 @@ public class LockOutRealm extends CombinedRealm {
 
         // Fail in all other cases
         return null;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Principal authenticate(GSSName gssName, GSSCredential gssCredential) {
+        String username = gssName.toString();
+
+        Principal authenticatedUser = super.authenticate(gssName, gssCredential);
+
+        return filterLockedAccounts(username, authenticatedUser);
     }
 
 

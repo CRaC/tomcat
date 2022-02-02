@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
 import java.util.Arrays;
@@ -1500,8 +1499,9 @@ public enum Cipher {
             null,
             null
     ),
-    /* GOST Ciphersuites. Unsupported by Java. OpenSSl lists them with IDs
-     * 0x3000080 to 0x3000083 */
+    /* GOST Ciphersuites. Unsupported by Java. OpenSSL lists them with IDs
+     * 0x3000080 to 0x3000083
+     * The ciphers are not listed in the IANA registry. */
     /*
     // Cipher 80
     TLS_GOSTR341094_WITH_28147_CNT_IMIT(
@@ -2776,7 +2776,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_3,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             true,
             128,
             128,
@@ -4432,7 +4432,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4449,7 +4449,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4466,7 +4466,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4483,7 +4483,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4568,7 +4568,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4585,7 +4585,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4602,7 +4602,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4619,7 +4619,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -4671,7 +4671,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             128,
             128,
@@ -4688,7 +4688,7 @@ public enum Cipher {
             MessageDigest.AEAD,
             Protocol.TLSv1_2,
             false,
-            EncryptionLevel.HIGH,
+            EncryptionLevel.MEDIUM,
             false,
             256,
             256,
@@ -5018,8 +5018,7 @@ public enum Cipher {
         this.id = id;
         this.openSSLAlias = openSSLAlias;
         if (openSSlAltNames != null && openSSlAltNames.length != 0) {
-            Set<String> altNames = new HashSet<>();
-            altNames.addAll(Arrays.asList(openSSlAltNames));
+            Set<String> altNames = new HashSet<>(Arrays.asList(openSSlAltNames));
             this.openSSLAltNames = Collections.unmodifiableSet(altNames);
         } else {
             this.openSSLAltNames = Collections.emptySet();

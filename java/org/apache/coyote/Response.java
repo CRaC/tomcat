@@ -49,8 +49,8 @@ import org.apache.tomcat.util.res.StringManager;
 public final class Response {
 
     private static final StringManager sm = StringManager.getManager(Response.class);
-
     private static final Log log = LogFactory.getLog(Response.class);
+
 
     // ----------------------------------------------------- Class Variables
 
@@ -122,9 +122,9 @@ public final class Response {
     private long commitTime = -1;
 
     /**
-     * Holds request error exception.
+     * Holds response writing error exception.
      */
-    Exception errorException = null;
+    private Exception errorException = null;
 
     /**
      * With the introduction of async processing and the possibility of
@@ -224,10 +224,6 @@ public final class Response {
      * @param status The status value to set
      */
     public void setStatus(int status) {
-        if (this.status > 399) {
-            // Don't overwrite first recorded error status
-            return;
-        }
         this.status = status;
     }
 
@@ -276,7 +272,8 @@ public final class Response {
     // -----------------Error State --------------------
 
     /**
-     * Set the error Exception that occurred during request processing.
+     * Set the error Exception that occurred during the writing of the response
+     * processing.
      *
      * @param ex The exception that occurred
      */
@@ -286,7 +283,7 @@ public final class Response {
 
 
     /**
-     * Get the Exception that occurred during request processing.
+     * Get the Exception that occurred during the writing of the response.
      *
      * @return The exception that occurred
      */
@@ -296,7 +293,7 @@ public final class Response {
 
 
     public boolean isExceptionPresent() {
-        return ( errorException != null );
+        return errorException != null;
     }
 
 
@@ -361,8 +358,9 @@ public final class Response {
     public void setHeader(String name, String value) {
         char cc=name.charAt(0);
         if( cc=='C' || cc=='c' ) {
-            if( checkSpecialHeader(name, value) )
-            return;
+            if( checkSpecialHeader(name, value) ) {
+                return;
+            }
         }
         headers.setValue(name).setString( value);
     }
@@ -376,8 +374,9 @@ public final class Response {
     public void addHeader(String name, String value, Charset charset) {
         char cc=name.charAt(0);
         if( cc=='C' || cc=='c' ) {
-            if( checkSpecialHeader(name, value) )
-            return;
+            if( checkSpecialHeader(name, value) ) {
+                return;
+            }
         }
         MessageBytes mb = headers.addValue(name);
         if (charset != null) {
@@ -406,7 +405,7 @@ public final class Response {
                 return true;
             } catch( NumberFormatException ex ) {
                 // Do nothing - the spec doesn't have any "throws"
-                // and the user might know what he's doing
+                // and the user might know what they're doing
                 return false;
             }
         }
@@ -440,7 +439,9 @@ public final class Response {
     public void setLocale(Locale locale) {
 
         if (locale == null) {
-            return;  // throw an exception?
+            this.locale = null;
+            this.contentLanguage = null;
+            return;
         }
 
         // Save the locale for use by getLocale()
@@ -460,28 +461,34 @@ public final class Response {
         return contentLanguage;
     }
 
+
     /**
-     * Overrides the name of the character encoding used in the body
-     * of the response. This method must be called prior to writing output
-     * using getWriter().
+     * Overrides the character encoding used in the body of the response. This
+     * method must be called prior to writing output using getWriter().
      *
-     * @param characterEncoding String containing the name of the character
-     *                          encoding.
+     * @param characterEncoding The name of character encoding.
      */
     public void setCharacterEncoding(String characterEncoding) {
         if (isCommitted()) {
             return;
         }
         if (characterEncoding == null) {
+            this.charset = null;
+            this.characterEncoding = null;
             return;
         }
 
+        this.characterEncoding = characterEncoding;
         try {
             this.charset = B2CConverter.getCharset(characterEncoding);
         } catch (UnsupportedEncodingException e) {
             throw new IllegalArgumentException(e);
         }
-        this.characterEncoding = characterEncoding;
+    }
+
+
+    public Charset getCharset() {
+        return charset;
     }
 
 
@@ -490,11 +497,6 @@ public final class Response {
      */
     public String getCharacterEncoding() {
         return characterEncoding;
-    }
-
-
-    public Charset getCharset() {
-        return charset;
     }
 
 
@@ -531,7 +533,14 @@ public final class Response {
 
         String charsetValue = m.getCharset();
 
-        if (charsetValue != null) {
+        if (charsetValue == null) {
+            // No charset and we know value is valid as parser was successful
+            // Pass-through user provided value in case user-agent is buggy and
+            // requires specific format
+            this.contentType = type;
+        } else {
+            // There is a charset so have to rebuild content-type without it
+            this.contentType = m.toStringNoCharset();
             charsetValue = charsetValue.trim();
             if (charsetValue.length() > 0) {
                 try {
@@ -551,8 +560,7 @@ public final class Response {
 
         String ret = contentType;
 
-        if (ret != null
-            && charset != null) {
+        if (ret != null && charset != null) {
             ret = ret + ";charset=" + characterEncoding;
         }
 
@@ -626,8 +634,10 @@ public final class Response {
         headers.clear();
         // Servlet 3.1 non-blocking write listener
         listener = null;
-        fireListener = false;
-        registeredForWrite = false;
+        synchronized (nonBlockingStateLock) {
+            fireListener = false;
+            registeredForWrite = false;
+        }
 
         // update counters
         contentWritten=0;
@@ -666,13 +676,16 @@ public final class Response {
      * need access to state.
      */
     volatile WriteListener listener;
+    // Ensures listener is only fired after a call is isReady()
     private boolean fireListener = false;
+    // Tracks write registration to prevent duplicate registrations
     private boolean registeredForWrite = false;
+    // Lock used to manage concurrent access to above flags
     private final Object nonBlockingStateLock = new Object();
 
     public WriteListener getWriteListener() {
         return listener;
-}
+    }
 
     public void setWriteListener(WriteListener listener) {
         if (listener == null) {
@@ -712,7 +725,7 @@ public final class Response {
                 fireListener = true;
             }
             action(ActionCode.DISPATCH_WRITE, null);
-            if (!ContainerThreadMarker.isContainerThread()) {
+            if (!req.isRequestThread()) {
                 // Not on a container thread so need to execute the dispatch
                 action(ActionCode.DISPATCH_EXECUTE, null);
             }

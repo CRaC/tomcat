@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.ant;
 
 
@@ -45,7 +43,7 @@ public class ResourcesTask extends AbstractCatalinaTask {
     protected String type = null;
 
     public String getType() {
-        return (this.type);
+        return this.type;
     }
 
     public void setType(String type) {

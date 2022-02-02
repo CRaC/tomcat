@@ -278,8 +278,18 @@ public class TestAuthorizationDigest {
     }
 
     @Test
-    public void testNonTokenDirective() throws Exception {
+    public void testNonTokenDirective1() throws Exception {
         String header = "Digest user{name=\"test\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNonTokenDirective2() throws Exception {
+        String header = "Digest a=b,{name=test";
 
         StringReader input = new StringReader(header);
 
@@ -305,6 +315,16 @@ public class TestAuthorizationDigest {
 
         Map<String,String> result = Authorization.parseAuthorizationDigest(input);
         Assert.assertEquals("auth", result.get("qop"));
+    }
+
+    @Test
+    public void testEmptyQop() throws Exception {
+        String header = "Digest qop=";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
     }
 
     @Test
@@ -459,5 +479,37 @@ public class TestAuthorizationDigest {
 
         Map<String,String> result = Authorization.parseAuthorizationDigest(input);
         Assert.assertEquals("b", result.get("a"));
+    }
+
+    @Test
+    public void testParseAuthParamBEscaped() throws Exception {
+        // Test for HttpParser.readTokenOrQuotedString()
+        // auth-param = token "=" ( token | quoted-string )
+        String header = "Digest a=\"b\\\"b\"";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertEquals("b\"b", result.get("a"));
+    }
+
+    @Test
+    public void testQuotedStringNoQuotes() throws Exception {
+        String header = "Digest username=a";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
+    }
+
+    @Test
+    public void testNotDigest() throws Exception {
+        String header = "SomethingElse a=b";
+
+        StringReader input = new StringReader(header);
+
+        Map<String,String> result = Authorization.parseAuthorizationDigest(input);
+        Assert.assertNull(result);
     }
 }

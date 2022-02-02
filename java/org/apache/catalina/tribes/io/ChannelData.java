@@ -73,7 +73,9 @@ public class ChannelData implements ChannelMessage {
      * @param generateUUID boolean - if true, a unique Id will be generated
      */
     public ChannelData(boolean generateUUID) {
-        if ( generateUUID ) generateUUID();
+        if ( generateUUID ) {
+            generateUUID();
+        }
     }
 
 
@@ -218,7 +220,6 @@ public class ChannelData implements ChannelMessage {
         XByteBuffer.toBytes(message.getLength(),data,offset);
         offset += 4; //message.length
         System.arraycopy(message.getBytesDirect(),0,data,offset,message.getLength());
-        offset += message.getLength(); //message data
         return data;
     }
 
@@ -294,7 +295,9 @@ public class ChannelData implements ChannelMessage {
     public boolean equals(Object o) {
         if ( o instanceof ChannelData ) {
             return Arrays.equals(getUniqueId(),((ChannelData)o).getUniqueId());
-        } else return false;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -302,15 +305,17 @@ public class ChannelData implements ChannelMessage {
      * @return ClusterData
      */
     @Override
-    public Object clone() {
-//        byte[] d = this.getDataPackage();
-//        return ClusterData.getDataFromPackage(d);
-        ChannelData clone = new ChannelData(false);
-        clone.options = this.options;
-        clone.message = new XByteBuffer(this.message.getBytesDirect(),false);
-        clone.timestamp = this.timestamp;
-        clone.uniqueId = this.uniqueId;
-        clone.address = this.address;
+    public ChannelData clone() {
+        ChannelData clone;
+        try {
+            clone = (ChannelData) super.clone();
+        } catch (CloneNotSupportedException e) {
+            // Cannot happen
+            throw new AssertionError();
+        }
+        if (this.message != null) {
+            clone.message = new XByteBuffer(this.message.getBytesDirect(),false);
+        }
         return clone;
     }
 
@@ -357,15 +362,17 @@ public class ChannelData implements ChannelMessage {
         buf.append("ClusterData[src=");
         buf.append(getAddress()).append("; id=");
         buf.append(bToS(getUniqueId())).append("; sent=");
-        buf.append(new Timestamp(this.getTimestamp()).toString()).append("]");
+        buf.append(new Timestamp(this.getTimestamp()).toString()).append(']');
         return buf.toString();
     }
 
     public static String bToS(byte[] data) {
         StringBuilder buf = new StringBuilder(4*16);
-        buf.append("{");
-        for (int i=0; data!=null && i<data.length; i++ ) buf.append(String.valueOf(data[i])).append(" ");
-        buf.append("}");
+        buf.append('{');
+        for (int i=0; data!=null && i<data.length; i++ ) {
+            buf.append(String.valueOf(data[i])).append(' ');
+        }
+        buf.append('}');
         return buf.toString();
     }
 

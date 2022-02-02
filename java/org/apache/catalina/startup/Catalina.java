@@ -170,7 +170,7 @@ public class Catalina {
 
     public ClassLoader getParentClassLoader() {
         if (parentClassLoader != null) {
-            return (parentClassLoader);
+            return parentClassLoader;
         }
         return ClassLoader.getSystemClassLoader();
     }
@@ -189,7 +189,7 @@ public class Catalina {
      * @return <code>true</code> if naming is enabled.
      */
     public boolean isUseNaming() {
-        return (this.useNaming);
+        return this.useNaming;
     }
 
 
@@ -228,24 +228,24 @@ public class Catalina {
             return false;
         }
 
-        for (int i = 0; i < args.length; i++) {
+        for (String arg : args) {
             if (isConfig) {
-                configFile = args[i];
+                configFile = arg;
                 isConfig = false;
-            } else if (args[i].equals("-config")) {
+            } else if (arg.equals("-config")) {
                 isConfig = true;
-            } else if (args[i].equals("-nonaming")) {
+            } else if (arg.equals("-nonaming")) {
                 setUseNaming(false);
-            } else if (args[i].equals("-help")) {
+            } else if (arg.equals("-help")) {
                 usage();
                 return false;
-            } else if (args[i].equals("start")) {
+            } else if (arg.equals("start")) {
                 // NOOP
-            } else if (args[i].equals("configtest")) {
+            } else if (arg.equals("configtest")) {
                 // NOOP
-            } else if (args[i].equals("stop")) {
+            } else if (arg.equals("stop")) {
                 // NOOP
-            } else if (args[i].equals("checkpoint")) {
+            } else if (arg.equals("checkpoint")) {
                 // NOOP
             } else {
                 usage();
@@ -267,7 +267,7 @@ public class Catalina {
         if (!file.isAbsolute()) {
             file = new File(Bootstrap.getCatalinaBase(), configFile);
         }
-        return (file);
+        return file;
 
     }
 
@@ -414,7 +414,7 @@ public class Catalina {
         if (log.isDebugEnabled()) {
             log.debug("Digester for server.xml created " + ( t2-t1 ));
         }
-        return (digester);
+        return digester;
 
     }
 
@@ -459,7 +459,7 @@ public class Catalina {
                             "setServer",
                             "org.apache.catalina.Server");
 
-        return (digester);
+        return digester;
 
     }
 
@@ -794,11 +794,11 @@ public class Catalina {
     }
 
 
+    /**
+     * @deprecated unused. Will be removed in Tomcat 10 onwards.
+     */
+    @Deprecated
     protected void initDirs() {
-        String temp = System.getProperty("java.io.tmpdir");
-        if (temp == null || (!(new File(temp)).isDirectory())) {
-            log.error(sm.getString("embedded.notmp", temp));
-        }
     }
 
 
@@ -812,7 +812,7 @@ public class Catalina {
     protected void initNaming() {
         // Setting additional variables
         if (!useNaming) {
-            log.info( "Catalina naming disabled");
+            log.info(sm.getString("catalina.noNaming"));
             System.setProperty("catalina.useNaming", "false");
         } else {
             System.setProperty("catalina.useNaming", "true");

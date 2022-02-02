@@ -34,16 +34,16 @@ import javax.servlet.ServletInputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpUpgradeHandler;
 import javax.servlet.http.Part;
 
 import org.apache.catalina.Globals;
+import org.apache.catalina.core.ApplicationMappingImpl;
+import org.apache.catalina.core.ApplicationPushBuilder;
 import org.apache.catalina.security.SecurityUtil;
-import org.apache.catalina.servlet4preview.http.HttpServletRequest;
-import org.apache.catalina.servlet4preview.http.PushBuilder;
-import org.apache.catalina.servlet4preview.http.ServletMapping;
 import org.apache.tomcat.util.res.StringManager;
 
 /**
@@ -1056,10 +1056,12 @@ public class RequestFacade implements HttpServletRequest {
         return request.getAsyncContext();
     }
 
+
     @Override
     public DispatcherType getDispatcherType() {
         return request.getDispatcherType();
     }
+
 
     @Override
     public boolean authenticate(HttpServletResponse response)
@@ -1084,31 +1086,25 @@ public class RequestFacade implements HttpServletRequest {
         return request.getParts();
     }
 
+
     @Override
     public Part getPart(String name) throws IllegalStateException, IOException,
             ServletException {
         return request.getPart(name);
     }
 
+
     public boolean getAllowTrace() {
         return request.getConnector().getAllowTrace();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @since Servlet 3.1
-     */
+
     @Override
     public long getContentLengthLong() {
         return request.getContentLengthLong();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * @since Servlet 3.1
-     */
+
     @Override
     public <T extends HttpUpgradeHandler> T upgrade(
             Class<T> httpUpgradeHandlerClass) throws java.io.IOException, ServletException {
@@ -1116,31 +1112,17 @@ public class RequestFacade implements HttpServletRequest {
     }
 
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Pulled forward from Servlet 4.0. The method signature may be modified,
-     * removed or replaced at any time until Servlet 4.0 becomes final.
-     */
-    @Override
-    public ServletMapping getServletMapping() {
-        return request.getServletMapping();
+    public ApplicationMappingImpl getHttpServletMapping() {
+        return request.getHttpServletMapping();
     }
 
 
-    public PushBuilder newPushBuilder(javax.servlet.http.HttpServletRequest request) {
+    public ApplicationPushBuilder newPushBuilder(javax.servlet.http.HttpServletRequest request) {
         return this.request.newPushBuilder(request);
     }
 
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Pulled forward from Servlet 4.0. The method signature may be modified,
-     * removed or replaced at any time until Servlet 4.0 becomes final.
-     */
-    @Override
-    public PushBuilder newPushBuilder() {
+    public ApplicationPushBuilder newPushBuilder() {
         return request.newPushBuilder();
     }
 }

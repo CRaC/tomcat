@@ -40,8 +40,6 @@ public class TestImportHandlerStandardPackages {
         f.setAccessible(true);
         Object obj = f.get(null);
 
-        Assert.assertTrue("Not Map", obj instanceof Map);
-
         @SuppressWarnings("unchecked")
         Map<String,Set<String>> standardPackageName = (Map<String, Set<String>>) obj;
 
@@ -59,10 +57,8 @@ public class TestImportHandlerStandardPackages {
             // 9 (and later) so it is not necessary that this is executed on
             // every test run. The intention is that it will catch new classes
             // when the tests are run on a newer JRE.
-            // The latest versions of the JRE where this test is known to pass are
-            // - OpenJDK 11.0.1
-            // - OpenJDK 12 EA 26
-            // - OpenJDK 13 EA 02
+            // The latest version of the JRE where this test is known to pass is
+            // - OpenJDK 14 EA 27
             if (!JreCompat.isJre9Available()) {
                 return;
             }
@@ -114,10 +110,10 @@ public class TestImportHandlerStandardPackages {
                 Assert.assertNotNull(files);
                 for (String file : files) {
                     if (!file.endsWith(".class")) {
-                        // Skip non-class resoucres
+                        // Skip non-class resources
                         continue;
                     }
-                    if (file.startsWith("Test")) {
+                    if (file.startsWith("Test") || file.endsWith("BaseTest.class")) {
                         // Skip test resources
                         continue;
                     }
@@ -136,7 +132,7 @@ public class TestImportHandlerStandardPackages {
                         // Skip directories
                         continue;
                     }
-                    Class<?> clazz = Class.forName(packageName + "." + name);
+                    Class<?> clazz = Class.forName(packageName + "." + name.replaceAll("\\.", "\\$"));
                     if (!Modifier.isPublic(clazz.getModifiers())) {
                         // Skip non-public classes
                         continue;

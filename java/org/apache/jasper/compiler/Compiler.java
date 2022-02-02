@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.File;
@@ -76,6 +75,7 @@ public abstract class Compiler {
         this.ctxt = ctxt;
         this.options = ctxt.getOptions();
     }
+
 
     // --------------------------------------------------------- Public Methods
 
@@ -264,7 +264,7 @@ public abstract class Compiler {
                         + " generate=" + (t4 - t3) + " validate=" + (t2 - t1));
             }
 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             // Remove the generated .java file
             File file = new File(javaFileName);
             if (file.exists()) {
@@ -370,17 +370,22 @@ public abstract class Compiler {
         }
 
         try {
+            final Long jspLastModified = ctxt.getLastModified(ctxt.getJspFile());
             String[] smap = generateJava();
             File javaFile = new File(ctxt.getServletJavaFileName());
-            Long jspLastModified = ctxt.getLastModified(ctxt.getJspFile());
-            javaFile.setLastModified(jspLastModified.longValue());
+            if (!javaFile.setLastModified(jspLastModified.longValue())) {
+                throw new JasperException(Localizer.getMessage("jsp.error.setLastModified", javaFile));
+            }
             if (compileClass) {
                 generateClass(smap);
                 // Fix for bugzilla 41606
                 // Set JspServletWrapper.servletClassLastModifiedTime after successful compile
                 File targetFile = new File(ctxt.getClassFileName());
                 if (targetFile.exists()) {
-                    targetFile.setLastModified(jspLastModified.longValue());
+                    if (!targetFile.setLastModified(jspLastModified.longValue())) {
+                        throw new JasperException(
+                                Localizer.getMessage("jsp.error.setLastModified", targetFile));
+                    }
                     if (jsw != null) {
                         jsw.setServletClassLastModifiedTime(
                                 jspLastModified.longValue());
@@ -527,9 +532,10 @@ public abstract class Compiler {
                     return true;
                 }
             } catch (Exception e) {
-                if (log.isDebugEnabled())
+                if (log.isDebugEnabled()) {
                     log.debug("Problem accessing resource. Treat as outdated.",
                             e);
+                }
                 return true;
             }
         }
@@ -564,8 +570,9 @@ public abstract class Compiler {
 
         try {
             File javaFile = new File(ctxt.getServletJavaFileName());
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Deleting " + javaFile);
+            }
             if (javaFile.exists()) {
                 if (!javaFile.delete()) {
                     log.warn(Localizer.getMessage(
@@ -583,8 +590,9 @@ public abstract class Compiler {
     public void removeGeneratedClassFiles() {
         try {
             File classFile = new File(ctxt.getClassFileName());
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Deleting " + classFile);
+            }
             if (classFile.exists()) {
                 if (!classFile.delete()) {
                     log.warn(Localizer.getMessage(

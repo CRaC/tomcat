@@ -47,6 +47,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.hamcrest.CoreMatchers;
+import org.hamcrest.MatcherAssert;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -734,7 +735,9 @@ public class TestStandardContext extends TomcatBaseTest {
         private Context context;
 
         private synchronized void init() throws Exception {
-            if (init) return;
+            if (init) {
+              return;
+            }
 
             Tomcat tomcat = getTomcatInstance();
             context = tomcat.addContext("", TEMP_DIR);
@@ -985,7 +988,7 @@ public class TestStandardContext extends TomcatBaseTest {
         Context context = new StandardContext();
 
         context.setResourceOnlyServlets("a,b,c");
-        Assert.assertThat(Arrays.asList(context.getResourceOnlyServlets().split(",")),
+        MatcherAssert.assertThat(Arrays.asList(context.getResourceOnlyServlets().split(",")),
                 CoreMatchers.hasItems("a", "b", "c"));
     }
 

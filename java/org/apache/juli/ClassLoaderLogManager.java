@@ -30,7 +30,6 @@ import java.security.PrivilegedAction;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.StringTokenizer;
@@ -301,24 +300,25 @@ public class ClassLoaderLogManager extends LogManager {
 
 
     private synchronized String findProperty(String name) {
-        ClassLoader classLoader = Thread.currentThread()
-                .getContextClassLoader();
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         ClassLoaderLogInfo info = getClassLoaderInfo(classLoader);
         String result = info.props.getProperty(name);
         // If the property was not found, and the current classloader had no
         // configuration (property list is empty), look for the parent classloader
         // properties.
         if ((result == null) && (info.props.isEmpty())) {
-            ClassLoader current = classLoader.getParent();
-            while (current != null) {
-                info = classLoaderLoggers.get(current);
-                if (info != null) {
-                    result = info.props.getProperty(name);
-                    if ((result != null) || (!info.props.isEmpty())) {
-                        break;
+            if (classLoader != null) {
+                ClassLoader current = classLoader.getParent();
+                while (current != null) {
+                    info = classLoaderLoggers.get(current);
+                    if (info != null) {
+                        result = info.props.getProperty(name);
+                        if ((result != null) || (!info.props.isEmpty())) {
+                            break;
+                        }
                     }
+                    current = current.getParent();
                 }
-                current = current.getParent();
             }
             if (result == null) {
                 result = super.getProperty(name);
@@ -461,18 +461,20 @@ public class ClassLoaderLogManager extends LogManager {
                 URL logConfig = ((URLClassLoader)classLoader).findResource("logging.properties");
 
                 if(null != logConfig) {
-                    if(Boolean.getBoolean(DEBUG_PROPERTY))
+                    if(Boolean.getBoolean(DEBUG_PROPERTY)) {
                         System.err.println(getClass().getName()
                                            + ".readConfiguration(): "
                                            + "Found logging.properties at "
                                            + logConfig);
+                    }
 
                     is = classLoader.getResourceAsStream("logging.properties");
                 } else {
-                    if(Boolean.getBoolean(DEBUG_PROPERTY))
+                    if(Boolean.getBoolean(DEBUG_PROPERTY)) {
                         System.err.println(getClass().getName()
                                            + ".readConfiguration(): "
                                            + "Found no logging.properties");
+                    }
                 }
             }
         } catch (AccessControlException ace) {
@@ -485,8 +487,7 @@ public class ClassLoaderLogManager extends LogManager {
                     Permission perm = ace.getPermission();
                     if (perm instanceof FilePermission && perm.getActions().equals("read")) {
                         log.warning("Reading " + perm.getName() + " is not permitted. See \"per context logging\" in the default catalina.policy file.");
-                    }
-                    else {
+                    } else {
                         log.warning("Reading logging.properties is not permitted in some context. See \"per context logging\" in the default catalina.policy file.");
                         log.warning("Original error was: " + ace.getMessage());
                     }
@@ -751,9 +752,7 @@ public class ClassLoaderLogManager extends LogManager {
         }
 
         void setParentLogger(final Logger parent) {
-            for (final Iterator<LogNode> iter =
-                children.values().iterator(); iter.hasNext();) {
-                final LogNode childNode = iter.next();
+            for (final LogNode childNode : children.values()) {
                 if (childNode.logger == null) {
                     childNode.setParentLogger(parent);
                 } else {

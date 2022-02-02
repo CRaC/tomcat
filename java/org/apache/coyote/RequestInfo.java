@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote;
 
 import javax.management.ObjectName;
@@ -96,6 +95,11 @@ public class RequestInfo  {
         return req.remoteAddr().toString();
     }
 
+    public String getPeerAddr() {
+        req.action(ActionCode.REQ_PEER_ADDR_ATTRIBUTE, null);
+        return req.peerAddr().toString();
+    }
+
     /**
      * Obtain the remote address for this connection as reported by an
      * intermediate proxy (if any).
@@ -161,8 +165,9 @@ public class RequestInfo  {
         bytesSent+=req.getResponse().getContentWritten();
 
         requestCount++;
-        if( req.getResponse().getStatus() >=400 )
+        if( req.getResponse().getStatus() >=400 ) {
             errorCount++;
+        }
         long t0=req.getStartTime();
         long t1=System.currentTimeMillis();
         long time=t1-t0;

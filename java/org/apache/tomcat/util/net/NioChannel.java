@@ -19,6 +19,8 @@ package org.apache.tomcat.util.net;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
+import java.nio.channels.GatheringByteChannel;
+import java.nio.channels.ScatteringByteChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -28,12 +30,10 @@ import org.apache.tomcat.util.res.StringManager;
 
 /**
  * Base class for a SocketChannel wrapper used by the endpoint.
- * This way, logic for a SSL socket channel remains the same as for
+ * This way, logic for an SSL socket channel remains the same as for
  * a non SSL, making sure we don't need to code for any exception cases.
- *
- * @version 1.0
  */
-public class NioChannel implements ByteChannel {
+public class NioChannel implements ByteChannel, ScatteringByteChannel, GatheringByteChannel {
 
     protected static final StringManager sm = StringManager.getManager(NioChannel.class);
 
@@ -60,6 +60,12 @@ public class NioChannel implements ByteChannel {
         bufHandler.reset();
     }
 
+    /**
+     * @return the socketWrapper
+     */
+    SocketWrapperBase<NioChannel> getSocketWrapper() {
+        return socketWrapper;
+    }
 
     void setSocketWrapper(SocketWrapperBase<NioChannel> socketWrapper) {
         this.socketWrapper = socketWrapper;
@@ -108,13 +114,15 @@ public class NioChannel implements ByteChannel {
      * @throws IOException If closing the secure channel fails.
      */
     public void close(boolean force) throws IOException {
-        if (isOpen() || force ) close();
+        if (isOpen() || force ) {
+            close();
+        }
     }
 
     /**
      * Tells whether or not this channel is open.
      *
-     * @return <tt>true</tt> if, and only if, this channel is open
+     * @return <code>true</code> if, and only if, this channel is open
      */
     @Override
     public boolean isOpen() {
@@ -134,17 +142,40 @@ public class NioChannel implements ByteChannel {
         return sc.write(src);
     }
 
+    @Override
+    public long write(ByteBuffer[] srcs) throws IOException {
+        return write(srcs, 0, srcs.length);
+    }
+
+    @Override
+    public long write(ByteBuffer[] srcs, int offset, int length)
+            throws IOException {
+        checkInterruptStatus();
+        return sc.write(srcs, offset, length);
+    }
+
     /**
      * Reads a sequence of bytes from this channel into the given buffer.
      *
      * @param dst The buffer into which bytes are to be transferred
-     * @return The number of bytes read, possibly zero, or <tt>-1</tt> if the
-     *         channel has reached end-of-stream
+     * @return The number of bytes read, possibly zero, or <code>-1</code> if
+     *         the channel has reached end-of-stream
      * @throws IOException If some other I/O error occurs
      */
     @Override
     public int read(ByteBuffer dst) throws IOException {
         return sc.read(dst);
+    }
+
+    @Override
+    public long read(ByteBuffer[] dsts) throws IOException {
+        return read(dsts, 0, dsts.length);
+    }
+
+    @Override
+    public long read(ByteBuffer[] dsts, int offset, int length)
+            throws IOException {
+        return sc.read(dsts, offset, length);
     }
 
     public Object getAttachment() {

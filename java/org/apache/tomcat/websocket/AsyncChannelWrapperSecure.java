@@ -18,6 +18,7 @@ package org.apache.tomcat.websocket;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.CompletionHandler;
@@ -166,6 +167,12 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
     }
 
 
+    @Override
+    public SocketAddress getLocalAddress() throws IOException {
+        return socketChannel.getLocalAddress();
+    }
+
+
     private class WriteTask implements Runnable {
 
         private final ByteBuffer[] srcs;
@@ -268,8 +275,7 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                         Future<Integer> f = socketChannel.read(socketReadBuffer);
                         Integer socketRead = f.get();
                         if (socketRead.intValue() == -1) {
-                            throw new EOFException(sm.getString(
-                                    "asyncChannelWrapperSecure.eof"));
+                            throw new EOFException(sm.getString("asyncChannelWrapperSecure.eof"));
                         }
                     }
 
@@ -277,8 +283,7 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
 
                     if (socketReadBuffer.hasRemaining()) {
                         // Decrypt the data in the buffer
-                        SSLEngineResult r =
-                                sslEngine.unwrap(socketReadBuffer, dest);
+                        SSLEngineResult r = sslEngine.unwrap(socketReadBuffer, dest);
                         read += r.bytesProduced();
                         Status s = r.getStatus();
 
@@ -335,7 +340,8 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                     future.fail(new IllegalStateException(sm.getString(
                             "asyncChannelWrapperSecure.wrongStateRead")));
                 }
-            } catch (Exception e) {
+            } catch (RuntimeException | ReadBufferOverflowException | SSLException | EOFException |
+                    ExecutionException | InterruptedException e) {
                 reading.set(false);
                 future.fail(e);
             }
@@ -411,9 +417,9 @@ public class AsyncChannelWrapperSecure implements AsyncChannelWrapper {
                         }
                     }
                 }
-            } catch (SSLException | InterruptedException |
-                    ExecutionException e) {
+            } catch (Exception e) {
                 hFuture.fail(e);
+                return;
             }
 
             hFuture.complete(null);

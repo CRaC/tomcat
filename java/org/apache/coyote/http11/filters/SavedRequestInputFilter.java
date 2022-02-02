@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote.http11.filters;
 
 import java.io.IOException;
@@ -52,8 +51,9 @@ public class SavedRequestInputFilter implements InputFilter {
     @Deprecated
     @Override
     public int doRead(ByteChunk chunk) throws IOException {
-        if(input.getOffset()>= input.getEnd())
+        if(input.getOffset()>= input.getEnd()) {
             return -1;
+        }
 
         int writeLength = 0;
 
@@ -72,8 +72,9 @@ public class SavedRequestInputFilter implements InputFilter {
 
     @Override
     public int doRead(ApplicationBufferHandler handler) throws IOException {
-        if(input.getOffset()>= input.getEnd())
+        if(input.getOffset()>= input.getEnd()) {
             return -1;
+        }
 
         ByteBuffer byteBuffer = handler.getByteBuffer();
         byteBuffer.position(byteBuffer.limit()).limit(byteBuffer.capacity());

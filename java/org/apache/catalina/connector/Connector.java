@@ -41,6 +41,9 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.buf.B2CConverter;
+import org.apache.tomcat.util.buf.CharsetUtil;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
+import org.apache.tomcat.util.buf.UDecoder;
 import org.apache.tomcat.util.net.SSLHostConfig;
 import org.apache.tomcat.util.net.openssl.OpenSSLImplementation;
 import org.apache.tomcat.util.res.StringManager;
@@ -64,11 +67,15 @@ public class Connector extends LifecycleMBeanBase  {
         Boolean.parseBoolean(System.getProperty("org.apache.catalina.connector.RECYCLE_FACADES", "false"));
 
 
+    public static final String INTERNAL_EXECUTOR_NAME = "Internal";
+
+
     // ------------------------------------------------------------ Constructor
 
     public Connector() {
         this(null);
     }
+
 
     public Connector(String protocol) {
         setProtocol(protocol);
@@ -89,11 +96,15 @@ public class Connector extends LifecycleMBeanBase  {
         } else {
             uriCharset = StandardCharsets.UTF_8;
         }
+
+        // Default for Connector depends on this (deprecated) system property
+        if (Boolean.parseBoolean(System.getProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "false"))) {
+            encodedSolidusHandling = EncodedSolidusHandling.DECODE;
+        }
     }
 
 
     // ----------------------------------------------------- Instance Variables
-
 
     /**
      * The <code>Service</code> we are associated with (if any).
@@ -119,7 +130,7 @@ public class Connector extends LifecycleMBeanBase  {
     protected boolean enableLookups = false;
 
 
-    /*
+    /**
      * Is generation of X-Powered-By response header enabled/disabled?
      */
     protected boolean xpoweredBy = false;
@@ -147,6 +158,16 @@ public class Connector extends LifecycleMBeanBase  {
      * the port number specified by the <code>port</code> property is used.
      */
     protected int proxyPort = 0;
+
+
+    /**
+     * The flag that controls recycling of the facades of the request
+     * processing objects. If set to <code>true</code> the object facades
+     * will be discarded when the request is recycled. If the security
+     * manager is enabled, this setting is ignored and object facades are
+     * always discarded.
+     */
+    protected boolean discardFacades = RECYCLE_FACADES;
 
 
     /**
@@ -255,7 +276,18 @@ public class Connector extends LifecycleMBeanBase  {
     protected String URIEncodingLower = null;
 
 
+    /**
+     * The URI encoding in use.
+     */
     private Charset uriCharset = StandardCharsets.UTF_8;
+
+
+    /**
+     * The behavior when an encoded solidus (slash) is submitted.
+     */
+    @SuppressWarnings("deprecation")
+    private EncodedSolidusHandling encodedSolidusHandling =
+            UDecoder.ALLOW_ENCODED_SLASH ? EncodedSolidusHandling.DECODE : EncodedSolidusHandling.REJECT;
 
 
     /**
@@ -311,7 +343,11 @@ public class Connector extends LifecycleMBeanBase  {
      *
      * @param name the property name
      * @return the property value
+     *
+     * @deprecated Use {@link #getProperty(String)}. This will be removed in
+     *             Tomcat 10 onwards.
      */
+    @Deprecated
     public Object getAttribute(String name) {
         return getProperty(name);
     }
@@ -322,7 +358,11 @@ public class Connector extends LifecycleMBeanBase  {
      *
      * @param name the property name
      * @param value the property value
+     *
+     * @deprecated Use {@link #setProperty(String, String)}. This will be
+     *             removed in Tomcat 10 onwards.
      */
+    @Deprecated
     public void setAttribute(String name, Object value) {
         setProperty(name, String.valueOf(value));
     }
@@ -382,6 +422,25 @@ public class Connector extends LifecycleMBeanBase  {
     public void setAsyncTimeout(long asyncTimeout) {
         this.asyncTimeout= asyncTimeout;
         setProperty("asyncTimeout", String.valueOf(asyncTimeout));
+    }
+
+
+    /**
+     * @return <code>true</code> if the object facades are discarded, either
+     *   when the discardFacades value is <code>true</code> or when the
+     *   security manager is enabled.
+     */
+    public boolean getDiscardFacades() {
+        return discardFacades || Globals.IS_SECURITY_ENABLED;
+    }
+
+
+    /**
+     * Set the recycling strategy for the object facades.
+     * @param discardFacades the new value of the flag
+     */
+    public void setDiscardFacades(boolean discardFacades) {
+        this.discardFacades = discardFacades;
     }
 
 
@@ -772,10 +831,13 @@ public class Connector extends LifecycleMBeanBase  {
      */
     public void setURIEncoding(String URIEncoding) {
         try {
-            uriCharset = B2CConverter.getCharset(URIEncoding);
+             Charset charset = B2CConverter.getCharset(URIEncoding);
+             if (!CharsetUtil.isAsciiSuperset(charset)) {
+                 log.error(sm.getString("coyoteConnector.notAsciiSuperset", URIEncoding));
+             }
+             uriCharset = charset;
         } catch (UnsupportedEncodingException e) {
-            log.warn(sm.getString("coyoteConnector.invalidEncoding",
-                    URIEncoding, uriCharset.name()), e);
+            log.error(sm.getString("coyoteConnector.invalidEncoding", URIEncoding, uriCharset.name()), e);
         }
         setProperty("uRIEncoding", URIEncoding);
     }
@@ -852,7 +914,7 @@ public class Connector extends LifecycleMBeanBase  {
         if (obj instanceof org.apache.catalina.Executor) {
             return ((org.apache.catalina.Executor) obj).getName();
         }
-        return "Internal";
+        return INTERNAL_EXECUTOR_NAME;
     }
 
 
@@ -873,6 +935,21 @@ public class Connector extends LifecycleMBeanBase  {
 
     public UpgradeProtocol[] findUpgradeProtocols() {
         return protocolHandler.findUpgradeProtocols();
+    }
+
+
+    public String getEncodedSolidusHandling() {
+        return encodedSolidusHandling.getValue();
+    }
+
+
+    public void setEncodedSolidusHandling(String encodedSolidusHandling) {
+        this.encodedSolidusHandling = EncodedSolidusHandling.fromString(encodedSolidusHandling);
+    }
+
+
+    public EncodedSolidusHandling getEncodedSolidusHandlingInternal() {
+        return encodedSolidusHandling;
     }
 
 
@@ -974,8 +1051,12 @@ public class Connector extends LifecycleMBeanBase  {
             setParseBodyMethods(getParseBodyMethods());
         }
 
+        if (protocolHandler.isAprRequired() && !AprLifecycleListener.isInstanceCreated()) {
+            throw new LifecycleException(sm.getString("coyoteConnector.protocolHandlerNoAprListener",
+                    getProtocolHandlerClassName()));
+        }
         if (protocolHandler.isAprRequired() && !AprLifecycleListener.isAprAvailable()) {
-            throw new LifecycleException(sm.getString("coyoteConnector.protocolHandlerNoApr",
+            throw new LifecycleException(sm.getString("coyoteConnector.protocolHandlerNoAprLibrary",
                     getProtocolHandlerClassName()));
         }
         if (AprLifecycleListener.isAprAvailable() && AprLifecycleListener.getUseOpenSSL() &&

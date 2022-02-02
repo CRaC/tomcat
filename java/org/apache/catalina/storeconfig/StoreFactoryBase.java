@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.storeconfig;
 
 import java.io.IOException;
@@ -52,9 +51,7 @@ public class StoreFactoryBase implements IStoreFactory {
      * <code>&lt;description&gt;/&lt;version&gt;</code>.
      */
     public String getInfo() {
-
-        return (info);
-
+        return info;
     }
 
     /**
@@ -118,9 +115,10 @@ public class StoreFactoryBase implements IStoreFactory {
                 aElement.getClass());
 
         if (elementDesc != null) {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug(sm.getString("factory.storeTag",
                         elementDesc.getTag(), aElement));
+            }
             getStoreAppender().printIndent(aWriter, indent + 2);
             if (!elementDesc.isChildren()) {
                 getStoreAppender().printTag(aWriter, indent, aElement,
@@ -132,9 +130,10 @@ public class StoreFactoryBase implements IStoreFactory {
                 getStoreAppender().printIndent(aWriter, indent + 2);
                 getStoreAppender().printCloseTag(aWriter, elementDesc);
             }
-        } else
+        } else {
             log.warn(sm.getString("factory.storeNoDescriptor", aElement
                     .getClass()));
+        }
     }
 
     /**
@@ -168,8 +167,9 @@ public class StoreFactoryBase implements IStoreFactory {
             if (elementFactory != null) {
                 StoreDescription desc = getRegistry().findDescription(
                         aTagElement.getClass());
-                if (!desc.isTransientChild(aTagElement.getClass().getName()))
+                if (!desc.isTransientChild(aTagElement.getClass().getName())) {
                     elementFactory.store(aWriter, indent, aTagElement);
+                }
             } else {
                 log.warn(sm.getString("factory.storeNoDescriptor", aTagElement
                         .getClass()));
@@ -187,9 +187,9 @@ public class StoreFactoryBase implements IStoreFactory {
     protected void storeElementArray(PrintWriter aWriter, int indent,
             Object[] elements) throws Exception {
         if (elements != null) {
-            for (int i = 0; i < elements.length; i++) {
+            for (Object element : elements) {
                 try {
-                    storeElement(aWriter, indent, elements[i]);
+                    storeElement(aWriter, indent, element);
                 } catch (IOException ioe) {
                     // ignore children report error them self!
                     // see StandardContext.storeWithBackup()

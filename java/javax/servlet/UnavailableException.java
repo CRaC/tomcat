@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.servlet;
 
 /**
@@ -43,9 +42,20 @@ public class UnavailableException extends ServletException {
 
     private static final long serialVersionUID = 1L;
 
-    private final Servlet servlet; // what's unavailable
-    private final boolean permanent; // needs admin action?
-    private final int seconds; // unavailability estimate
+    /**
+     * The Servlet that is unavailable.
+     */
+    private final Servlet servlet;
+
+    /**
+     * Is the issue permanent - i.e. is administrator action required?
+     */
+    private final boolean permanent;
+
+    /**
+     * The estimate of how long the Servlet will be unavailable.
+     */
+    private final int seconds;
 
     /**
      * @param servlet
@@ -82,10 +92,11 @@ public class UnavailableException extends ServletException {
     public UnavailableException(int seconds, Servlet servlet, String msg) {
         super(msg);
         this.servlet = servlet;
-        if (seconds <= 0)
+        if (seconds <= 0) {
             this.seconds = -1;
-        else
+        } else {
             this.seconds = seconds;
+        }
         permanent = false;
     }
 
@@ -125,10 +136,11 @@ public class UnavailableException extends ServletException {
     public UnavailableException(String msg, int seconds) {
         super(msg);
 
-        if (seconds <= 0)
+        if (seconds <= 0) {
             this.seconds = -1;
-        else
+        } else {
             this.seconds = seconds;
+        }
         servlet = null;
         permanent = false;
     }

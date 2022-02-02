@@ -51,6 +51,9 @@ public class Http11OutputBuffer implements HttpOutputBuffer {
     protected Response response;
 
 
+    private volatile boolean ackSent = false;
+
+
     /**
      * Finished flag.
      */
@@ -172,8 +175,9 @@ public class Http11OutputBuffer implements HttpOutputBuffer {
             filter.setBuffer(outputStreamOutputBuffer);
         } else {
             for (int i = 0; i <= lastActiveFilter; i++) {
-                if (activeFilters[i] == filter)
+                if (activeFilters[i] == filter) {
                     return;
+                }
             }
             filter.setBuffer(activeFilters[lastActiveFilter]);
         }
@@ -307,6 +311,7 @@ public class Http11OutputBuffer implements HttpOutputBuffer {
         // Reset pointers
         headerBuffer.position(0).limit(headerBuffer.capacity());
         lastActiveFilter = -1;
+        ackSent = false;
         responseFinished = false;
         byteCount = 0;
     }
@@ -319,7 +324,11 @@ public class Http11OutputBuffer implements HttpOutputBuffer {
 
     @SuppressWarnings("deprecation")
     public void sendAck() throws IOException {
-        if (!response.isCommitted()) {
+        // It possible that the protocol configuration is changed between the
+        // request being received and the first read of the body. That could led
+        // to multiple calls to this method so ensure the ACK is only sent once.
+        if (!response.isCommitted() && !ackSent) {
+            ackSent = true;
             if (sendReasonPhrase) {
                 socketWrapper.write(isBlocking(), Constants.ACK_BYTES_REASON, 0, Constants.ACK_BYTES_REASON.length);
             } else {

@@ -882,9 +882,10 @@ final class SetPublicIdRule extends Rule {
         }
 
         m.invoke(top, (Object [])paramValues);
-        if (digester.getLogger().isDebugEnabled())
+        if (digester.getLogger().isDebugEnabled()) {
             digester.getLogger().debug("" + top.getClass().getName() + "."
                                        + method + "(" + paramValues[0] + ")");
+        }
 
     }
 
@@ -907,16 +908,18 @@ final class ServletDefCreateRule extends Rule {
         throws Exception {
         ServletDef servletDef = new ServletDef();
         digester.push(servletDef);
-        if (digester.getLogger().isDebugEnabled())
+        if (digester.getLogger().isDebugEnabled()) {
             digester.getLogger().debug("new " + servletDef.getClass().getName());
+        }
     }
 
     @Override
     public void end(String namespace, String name)
         throws Exception {
         ServletDef servletDef = (ServletDef) digester.pop();
-        if (digester.getLogger().isDebugEnabled())
+        if (digester.getLogger().isDebugEnabled()) {
             digester.getLogger().debug("pop " + servletDef.getClass().getName());
+        }
     }
 
 }
@@ -1021,7 +1024,7 @@ final class CallMethodMultiRule extends CallMethodRule {
             sb.append(targetOffset);
             sb.append(",stackdepth=");
             sb.append(digester.getCount());
-            sb.append(")");
+            sb.append(')');
             throw new org.xml.sax.SAXException(sb.toString());
         }
 
@@ -1032,12 +1035,11 @@ final class CallMethodMultiRule extends CallMethodRule {
             return;
         }
 
-        for (int j = 0; j < multiParams.size(); j++) {
-            Object param = multiParams.get(j);
-            if(param == null || (param instanceof String
+        for (Object param : multiParams) {
+            if (param == null || (param instanceof String
                     && !String.class.isAssignableFrom(paramTypes[multiParamIndex]))) {
                 paramValues[multiParamIndex] =
-                    IntrospectionUtils.convert((String) param, paramTypes[multiParamIndex]);
+                        IntrospectionUtils.convert((String) param, paramTypes[multiParamIndex]);
             } else {
                 paramValues[multiParamIndex] = param;
             }

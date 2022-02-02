@@ -41,9 +41,14 @@ import org.apache.tomcat.util.security.Escape;
  * @author David Becker
  */
 public class SSIMediator {
+    protected static final String ENCODING_NONE = "none";
+    protected static final String ENCODING_ENTITY = "entity";
+    protected static final String ENCODING_URL = "url";
+
     protected static final String DEFAULT_CONFIG_ERR_MSG = "[an error occurred while processing this directive]";
     protected static final String DEFAULT_CONFIG_TIME_FMT = "%A, %d-%b-%Y %T %Z";
     protected static final String DEFAULT_CONFIG_SIZE_FMT = "abbrev";
+
     protected String configErrMsg = DEFAULT_CONFIG_ERR_MSG;
     protected String configTimeFmt = DEFAULT_CONFIG_TIME_FMT;
     protected String configSizeFmt = DEFAULT_CONFIG_SIZE_FMT;
@@ -150,7 +155,7 @@ public class SSIMediator {
 
 
     public String getVariableValue(String variableName) {
-        return getVariableValue(variableName, "none");
+        return getVariableValue(variableName, ENCODING_NONE);
     }
 
 
@@ -191,7 +196,9 @@ public class SSIMediator {
     public String substituteVariables(String val) {
         // If it has no references or HTML entities then no work
         // need to be done
-        if (val.indexOf('$') < 0 && val.indexOf('&') < 0) return val;
+        if (val.indexOf('$') < 0 && val.indexOf('&') < 0) {
+            return val;
+        }
 
         // HTML decoding
         val = val.replace("&lt;", "<");
@@ -222,7 +229,9 @@ public class SSIMediator {
                     break;
                 }
             }
-            if (i == sb.length()) break;
+            if (i == sb.length()) {
+                break;
+            }
             // Check to see if the $ is escaped
             if (i > 1 && sb.charAt(i - 2) == '\\') {
                 sb.deleteCharAt(i - 2);
@@ -241,15 +250,21 @@ public class SSIMediator {
             }
             // Find the end of the var reference
             for (; i < sb.length(); i++) {
-                if (sb.charAt(i) == endChar) break;
+                if (sb.charAt(i) == endChar) {
+                    break;
+                }
             }
             end = i;
             nameEnd = end;
-            if (endChar == '}') end++;
+            if (endChar == '}') {
+                end++;
+            }
             // We should now have enough to extract the var name
             String varName = sb.substring(nameStart, nameEnd);
             String value = getVariableValue(varName);
-            if (value == null) value = "";
+            if (value == null) {
+                value = "";
+            }
             // Replace the var name with its value
             sb.replace(start, end, value);
             // Start searching for the next $ after the value
@@ -279,11 +294,11 @@ public class SSIMediator {
 
     protected String encode(String value, String encoding) {
         String retVal = null;
-        if (encoding.equalsIgnoreCase("url")) {
+        if (encoding.equalsIgnoreCase(ENCODING_URL)) {
             retVal = URLEncoder.DEFAULT.encode(value, StandardCharsets.UTF_8);
-        } else if (encoding.equalsIgnoreCase("none")) {
+        } else if (encoding.equalsIgnoreCase(ENCODING_NONE)) {
             retVal = value;
-        } else if (encoding.equalsIgnoreCase("entity")) {
+        } else if (encoding.equalsIgnoreCase(ENCODING_ENTITY)) {
             retVal = Escape.htmlElementContent(value);
         } else {
             //This shouldn't be possible

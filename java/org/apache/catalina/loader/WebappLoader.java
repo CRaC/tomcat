@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
@@ -66,8 +67,8 @@ public class WebappLoader extends LifecycleMBeanBase
     // ----------------------------------------------------------- Constructors
 
     /**
-     * Construct a new WebappLoader with no defined parent class loader
-     * (so that the actual parent will be the system class loader).
+     * Construct a new WebappLoader. The parent class loader will be defined by
+     * {@link Context#getParentClassLoader()}.
      */
     public WebappLoader() {
         this(null);
@@ -79,7 +80,12 @@ public class WebappLoader extends LifecycleMBeanBase
      * to be defined as the parent of the ClassLoader we ultimately create.
      *
      * @param parent The parent class loader
+     *
+     * @deprecated Use {@link Context#setParentClassLoader(ClassLoader)} to
+     *             specify the required class loader. This method will be
+     *             removed in Tomcat 10 onwards.
      */
+    @Deprecated
     public WebappLoader(ClassLoader parent) {
         super();
         this.parentClassLoader = parent;
@@ -222,7 +228,7 @@ public class WebappLoader extends LifecycleMBeanBase
      * @return the ClassLoader class name.
      */
     public String getLoaderClass() {
-        return (this.loaderClass);
+        return this.loaderClass;
     }
 
 
@@ -315,8 +321,8 @@ public class WebappLoader extends LifecycleMBeanBase
     public String getLoaderRepositoriesString() {
         String repositories[]=getLoaderRepositories();
         StringBuilder sb=new StringBuilder();
-        for( int i=0; i<repositories.length ; i++ ) {
-            sb.append( repositories[i]).append(":");
+        for (String repository : repositories) {
+            sb.append(repository).append(':');
         }
         return sb.toString();
     }
@@ -360,8 +366,9 @@ public class WebappLoader extends LifecycleMBeanBase
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder("WebappLoader[");
-        if (context != null)
+        if (context != null) {
             sb.append(context.getName());
+        }
         sb.append("]");
         return (sb.toString());
     }
@@ -377,8 +384,9 @@ public class WebappLoader extends LifecycleMBeanBase
     @Override
     protected void startInternal() throws LifecycleException {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug(sm.getString("webappLoader.starting"));
+        }
 
         if (context.getResources() == null) {
             log.info("No resources for " + context);
@@ -431,8 +439,9 @@ public class WebappLoader extends LifecycleMBeanBase
     @Override
     protected void stopInternal() throws LifecycleException {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug(sm.getString("webappLoader.stopping"));
+        }
 
         setState(LifecycleState.STOPPING);
 
@@ -480,8 +489,9 @@ public class WebappLoader extends LifecycleMBeanBase
     public void propertyChange(PropertyChangeEvent event) {
 
         // Validate the source of this event
-        if (!(event.getSource() instanceof Context))
+        if (!(event.getSource() instanceof Context)) {
             return;
+        }
 
         // Process a relevant property change
         if (event.getPropertyName().equals("reloadable")) {
@@ -509,6 +519,8 @@ public class WebappLoader extends LifecycleMBeanBase
 
         if (parentClassLoader == null) {
             parentClassLoader = context.getParentClassLoader();
+        } else {
+            context.setParentClassLoader(parentClassLoader);
         }
         Class<?>[] argTypes = { ClassLoader.class };
         Object[] args = { parentClassLoader };
@@ -524,10 +536,12 @@ public class WebappLoader extends LifecycleMBeanBase
      */
     private void setPermissions() {
 
-        if (!Globals.IS_SECURITY_ENABLED)
+        if (!Globals.IS_SECURITY_ENABLED) {
             return;
-        if (context == null)
+        }
+        if (context == null) {
             return;
+        }
 
         // Tell the class loader the root of the context
         ServletContext servletContext = context.getServletContext();
@@ -561,11 +575,13 @@ public class WebappLoader extends LifecycleMBeanBase
     private void setClassPath() {
 
         // Validate our current state information
-        if (context == null)
+        if (context == null) {
             return;
+        }
         ServletContext servletContext = context.getServletContext();
-        if (servletContext == null)
+        if (servletContext == null) {
             return;
+        }
 
         StringBuilder classpath = new StringBuilder();
 
@@ -602,20 +618,23 @@ public class WebappLoader extends LifecycleMBeanBase
     private boolean buildClassPath(StringBuilder classpath, ClassLoader loader) {
         if (loader instanceof URLClassLoader) {
             URL repositories[] = ((URLClassLoader) loader).getURLs();
-                for (int i = 0; i < repositories.length; i++) {
-                    String repository = repositories[i].toString();
-                    if (repository.startsWith("file://"))
-                        repository = UDecoder.URLDecode(repository.substring(7));
-                    else if (repository.startsWith("file:"))
-                        repository = UDecoder.URLDecode(repository.substring(5));
-                    else
-                        continue;
-                    if (repository == null)
-                        continue;
-                    if (classpath.length() > 0)
-                        classpath.append(File.pathSeparator);
-                    classpath.append(repository);
+            for (URL url : repositories) {
+                String repository = url.toString();
+                if (repository.startsWith("file://")) {
+                    repository = UDecoder.URLDecode(repository.substring(7), StandardCharsets.ISO_8859_1);
+                } else if (repository.startsWith("file:")) {
+                    repository = UDecoder.URLDecode(repository.substring(5), StandardCharsets.ISO_8859_1);
+                } else {
+                    continue;
                 }
+                if (repository == null) {
+                    continue;
+                }
+                if (classpath.length() > 0) {
+                    classpath.append(File.pathSeparator);
+                }
+                classpath.append(repository);
+            }
         } else if (loader == ClassLoader.getSystemClassLoader()){
             // Java 9 onwards. The internal class loaders no longer extend
             // URLCLassLoader
@@ -656,7 +675,7 @@ public class WebappLoader extends LifecycleMBeanBase
 
         String contextName = context.getName();
         if (!contextName.startsWith("/")) {
-            name.append("/");
+            name.append('/');
         }
         name.append(contextName);
 

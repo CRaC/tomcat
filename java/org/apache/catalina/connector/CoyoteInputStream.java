@@ -125,32 +125,7 @@ public class CoyoteInputStream extends ServletInputStream {
 
     @Override
     public int read(final byte[] b) throws IOException {
-        checkNonBlockingRead();
-
-        if (SecurityUtil.isPackageProtectionEnabled()) {
-            try {
-                Integer result = AccessController
-                        .doPrivileged(new PrivilegedExceptionAction<Integer>() {
-
-                            @Override
-                            public Integer run() throws IOException {
-                                Integer integer = Integer.valueOf(ib.read(b, 0, b.length));
-                                return integer;
-                            }
-
-                        });
-                return result.intValue();
-            } catch (PrivilegedActionException pae) {
-                Exception e = pae.getException();
-                if (e instanceof IOException) {
-                    throw (IOException) e;
-                } else {
-                    throw new RuntimeException(e.getMessage(), e);
-                }
-            }
-        } else {
-            return ib.read(b, 0, b.length);
-        }
+        return read(b, 0, b.length);
     }
 
 
@@ -226,12 +201,6 @@ public class CoyoteInputStream extends ServletInputStream {
     }
 
 
-    @Override
-    public int readLine(byte[] b, int off, int len) throws IOException {
-        return super.readLine(b, off, len);
-    }
-
-
     /**
      * Close the stream
      * Since we re-cycle, we can't allow the call to super.close()
@@ -272,6 +241,9 @@ public class CoyoteInputStream extends ServletInputStream {
 
     @Override
     public boolean isReady() {
+        if (ib == null) {
+            throw new IllegalStateException(sm.getString("coyoteInputStream.null"));
+        }
         return ib.isReady();
     }
 

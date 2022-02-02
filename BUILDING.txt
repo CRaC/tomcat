@@ -64,9 +64,9 @@ source distribution, do the following:
     into which you installed the JDK release.
 
 
-(2) Install Apache Ant version 1.9.8 or later on your computer.
+(2) Install Apache Ant version 1.9.10 or later on your computer.
 
- 1. If Apache Ant version 1.9.8 or later is already installed on your
+ 1. If Apache Ant version 1.9.10 or later is already installed on your
     computer, skip to (3).
 
  2. Download a binary distribution of Ant from:
@@ -93,13 +93,13 @@ source distribution, do the following:
 
 (3.1) Checkout or obtain the source code for Tomcat @VERSION_MAJOR_MINOR@
 
-Checkout the source using SVN, selecting a tag for released version or
-trunk for the current development code, or download and unpack a source
+Clone the source using git, then checkout a specific major branch or
+master for the latest code development, or download and unpack a source
 package.
 
- *  Tomcat SVN repository URL:
+ *  Tomcat GitHub repository URL:
 
-        https://svn.apache.org/repos/asf/tomcat/tc@VERSION_MAJOR_MINOR@.x/trunk/
+        https://github.com/apache/tomcat
 
  *  Source packages can be downloaded from:
 
@@ -184,7 +184,7 @@ each release package has the appropriate line-endings.
 (4) Updating sources and rebuilding
 
 It is recommended that you regularly update the downloaded Tomcat @VERSION_MAJOR_MINOR@
-sources using your SVN client.
+sources using your git client.
 
 For a quick rebuild of only modified code you can use:
 
@@ -257,6 +257,9 @@ You can build them by using the following commands:
     the case, the skip.installer property may be set to skip the creation of the
     Windows installer.
 
+    Provided that Wine is available on non-Windows platforms, a full release
+    build may be made on Windows, Linux or MacOS.
+
  1. Configure GPG, if needed
 
     If the released artifacts have to be cryptographically signed with a
@@ -289,20 +292,21 @@ You can build them by using the following commands:
     file:
 
         # Location of GPG executable (used only for releases)
+        gpg.exec=/path/to/gpg
         # Code signing of Windows installer
         do.codesigning=true
-        codesigning.user=request-via-pmc
-        codesigning.pwd=request-via-pmc
-        codesigning.partnercode=request-via-pmc
-        codesigning.service=Microsoft Windows Signing
+        codesigning.storepass=request-via-pmc
 
     Release managers will be provided with the necessary credentials by the PMC.
-    It will also be necessary to enable TLS 1.1 and TLS 1.2 by default (they are
-    disabled by default on Java 7) for the build process to communicate with the
-    code signing service. The simplest way is by setting the ANT_OPTS
-    environment variable. E.g. (for Windows):
+    It will also be necessary to enable TLS 1.2 and the correct cipher suite to
+    for the build process to communicate with the code signing service. The
+    simplest way is by setting the ANT_OPTS environment variable.
+    E.g. (for Windows):
 
-    set ANT_OPTS=-Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2
+    set ANT_OPTS=-Dhttps.protocols=TLSv1,TLSv1.1,TLSv1.2 -Dhttps.cipherSuites=TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
+
+    You will also need to download and install the Java 7 unlimited strength
+    jurisdiction policy files in order to use the above cipher suite.
 
  4. Build the release:
 
@@ -487,11 +491,10 @@ NOTE: Cobertura is licensed under GPL v2 with parts of it being under
 
         java.net.preferIPv4Stack=true
 
- 10. It is possible to control whether the output of the tests is displayed
-     on the console or not. By default it is displayed and can be disabled
-     by the following property:
+ 10. By default the output of unit tests is sent to the console and can be
+     quite verbose. The output can be disabled by setting the property:
 
-        test.verbose=true
+        test.verbose=false
 
 (8) Source code checks
 
@@ -524,26 +527,26 @@ target. The command is:
     ant -Dexecute.validate=true validate
 
 
-(8.2) FindBugs
+(8.2) SpotBugs
 
-NOTE: FindBugs is licensed under LGPL. Using Findbugs during Tomcat build is
+NOTE: SpotBugs is licensed under LGPL. Using SpotBugs during Tomcat build is
       optional and is off by default.
 
-      See http://findbugs.sourceforge.net/ for more information.
+      See https://spotbugs.github.io/ for more information.
 
-To enable FindBugs, add the following property to build.properties file:
+To enable SpotBugs, add the following property to build.properties file:
 
-    execute.findbugs=true
+    execute.spotbugs=true
 
-To compile Tomcat classes and generate a FindBugs report, call the
-"findbugs" target. For example:
+To compile Tomcat classes and generate a SpotBugs report, call the
+"spotbugs" target. For example:
 
     cd ${tomcat.source}
-    ant -Dexecute.findbugs=true findbugs
+    ant -Dexecute.spotbugs=true spotbugs
 
 The report file by default is written to
 
-    output/findbugs
+    output/spotbugs
 
 
 (8.3) End-of-line conventions check
@@ -551,15 +554,12 @@ The report file by default is written to
 You usually would not need to run this check. You can skip this section.
 
 Apache Tomcat project has convention that all of its textual source files,
-stored in Subversion repository, are marked with Subversion property
-"svn:eol-style" with value of "native". This convention makes the editing
-of source code on different platforms easier.
+stored in the Git repository, use Unix style LF line endings.
 
 This test is used by developers to check that the source code adheres to
 this convention. It verifies that the ends of lines in textual files are
-appropriate for the operating system where it is run. The idea is to run
-this check regularly on two different platforms and notify developers when
-an inconsistency is detected.
+appropriate. The idea is to run this check regularly and notify developers
+when an inconsistency is detected.
 
 The command to run this test is:
 

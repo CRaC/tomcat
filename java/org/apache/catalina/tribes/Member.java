@@ -14,8 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes;
+
+import java.io.Serializable;
 
 /**
  * The Member interface, defines a member in the group.
@@ -27,7 +28,7 @@ package org.apache.catalina.tribes;
  * since a member that has crashed and the starts up again on the same port/host is
  * not guaranteed to be the same member, so no state transfers will ever be confused
  */
-public interface Member {
+public interface Member extends Serializable {
 
     /**
      * When a member leaves the cluster, the payload of the memberDisappeared member

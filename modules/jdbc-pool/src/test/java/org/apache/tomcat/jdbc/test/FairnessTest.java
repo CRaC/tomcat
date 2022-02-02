@@ -17,7 +17,9 @@
 package org.apache.tomcat.jdbc.test;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -45,8 +47,9 @@ public class FairnessTest extends DefaultTestCase {
             minwait = Math.min(minwait, t.minwait);
             minfetch = Math.min(minfetch, t.nroffetch);
             maxfetch = Math.max(maxfetch, t.nroffetch);
-            if (FairnessTest.this.printthread)
-                System.out.println(t.getName()+" : Nr-of-fetch:"+t.nroffetch+ " Max fetch Time:"+t.maxwait/1000000f+"ms. :Max close time:"+t.cmax/1000000f+"ms.");
+            if (FairnessTest.this.printthread) {
+              System.out.println(t.getName()+" : Nr-of-fetch:"+t.nroffetch+ " Max fetch Time:"+t.maxwait/1000000f+"ms. :Max close time:"+t.cmax/1000000f+"ms.");
+            }
         }
         System.out.println("["+name+"] Max fetch:"+(maxfetch)+" Min fetch:"+(minfetch)+" Average fetch:"+
                            (((float)totalfetch))/(float)threads.length);
@@ -211,7 +214,9 @@ public class FairnessTest extends DefaultTestCase {
             try {
                 long now = System.currentTimeMillis();
                 while (FairnessTest.this.run) {
-                    if ((System.currentTimeMillis()-now)>=FairnessTest.this.complete) break;
+                    if ((System.currentTimeMillis()-now)>=FairnessTest.this.complete) {
+                      break;
+                    }
                     long start = System.nanoTime();
                     Connection con = null;
                     try {
@@ -227,13 +232,17 @@ public class FairnessTest extends DefaultTestCase {
                         minwait = Math.min(delta, minwait);
                         nroffetch++;
                         try {
-                            if (FairnessTest.this.sleep>0) sleep(FairnessTest.this.sleep);
+                            if (FairnessTest.this.sleep>0) {
+                              sleep(FairnessTest.this.sleep);
+                            }
                         } catch (InterruptedException x) {
                             interrupted();
                         }
                     } finally {
                         long cstart = System.nanoTime();
-                        if (con!=null) try {con.close();}catch(Exception x) {x.printStackTrace();}
+                        if (con!=null) {
+                          try {con.close();}catch(Exception x) {x.printStackTrace();}
+                        }
                         long cdelta = System.nanoTime() - cstart;
                         totalcmax += cdelta;
                         cmax = Math.max(cdelta, cmax);
@@ -241,7 +250,7 @@ public class FairnessTest extends DefaultTestCase {
                     totalruntime+=(System.nanoTime()-start);
                 }
 
-            } catch (Exception x) {
+            } catch (RuntimeException | SQLException | ExecutionException | InterruptedException x) {
                 x.printStackTrace();
             } finally {
                 FairnessTest.this.latch.countDown();

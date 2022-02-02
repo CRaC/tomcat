@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.io.File;
@@ -48,7 +47,8 @@ public class TestCompiler extends TomcatBaseTest {
         assertEcho(result, "OK");
 
         // Check content type
-        Assert.assertTrue(headers.get("Content-Type").get(0).startsWith("text/html"));
+        String contentType = getSingleHeader("Content-Type", headers);
+        Assert.assertTrue(contentType.startsWith("text/html"));
     }
 
     @Test
@@ -66,7 +66,8 @@ public class TestCompiler extends TomcatBaseTest {
         assertEcho(result, "OK");
 
         // Check content type
-        Assert.assertTrue(headers.get("Content-Type").get(0).startsWith("text/plain"));
+        String contentType = getSingleHeader("Content-Type", headers);
+        Assert.assertTrue(contentType.startsWith("text/plain"));
     }
 
     @Test

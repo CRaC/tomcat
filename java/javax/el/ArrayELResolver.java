@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package javax.el;
 
 import java.beans.FeatureDescriptor;
@@ -78,7 +77,7 @@ public class ArrayELResolver extends ELResolver {
 
             if (this.readOnly) {
                 throw new PropertyNotWritableException(Util.message(context,
-                        "resolverNotWriteable", base.getClass().getName()));
+                        "resolverNotWritable", base.getClass().getName()));
             }
 
             int idx = coerce(property);
@@ -138,7 +137,7 @@ public class ArrayELResolver extends ELResolver {
             return ((Character) property).charValue();
         }
         if (property instanceof Boolean) {
-            return (((Boolean) property).booleanValue() ? 1 : 0);
+            return ((Boolean) property).booleanValue() ? 1 : 0;
         }
         if (property instanceof String) {
             return Integer.parseInt((String) property);

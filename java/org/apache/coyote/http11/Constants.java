@@ -103,8 +103,21 @@ public final class Constants {
     /* Various constant "strings" */
     public static final String CONNECTION = "Connection";
     public static final String CLOSE = "close";
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public static final byte[] CLOSE_BYTES = ByteChunk.convertToBytes(CLOSE);
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public static final String KEEPALIVE = "keep-alive";
+    public static final String KEEP_ALIVE_HEADER_VALUE_TOKEN = "keep-alive";
+    /**
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     */
+    @Deprecated
     public static final byte[] KEEPALIVE_BYTES = ByteChunk.convertToBytes(KEEPALIVE);
     public static final String CHUNKED = "chunked";
     /**
@@ -116,6 +129,7 @@ public final class Constants {
             ByteChunk.convertToBytes("HTTP/1.1 100 Continue" + CRLF + CRLF);
     public static final byte[] ACK_BYTES = ByteChunk.convertToBytes("HTTP/1.1 100 " + CRLF + CRLF);
     public static final String TRANSFERENCODING = "Transfer-Encoding";
+    public static final String KEEP_ALIVE_HEADER_NAME = "Keep-Alive";
     public static final byte[] _200_BYTES = ByteChunk.convertToBytes("200");
     public static final byte[] _400_BYTES = ByteChunk.convertToBytes("400");
     public static final byte[] _404_BYTES = ByteChunk.convertToBytes("404");

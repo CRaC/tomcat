@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.naming.factory;
 
 import java.security.AccessController;
@@ -124,8 +123,7 @@ public class SendMailFactory implements ObjectFactory
                     return mds;
                 }
             } );
-        }
-        else { // We can't create an instance of the DataSource
+        } else { // We can't create an instance of the DataSource
             return null;
         }
     }

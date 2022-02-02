@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.tribes.transport.bio;
 
 import java.io.IOException;
@@ -46,11 +45,15 @@ public class MultipointBioSender extends AbstractSender implements MultiPointSen
             try {
                 senders[i].sendMessage(data,(msg.getOptions()&Channel.SEND_OPTIONS_USE_ACK)==Channel.SEND_OPTIONS_USE_ACK);
             } catch (Exception x) {
-                if (cx == null) cx = new ChannelException(x);
+                if (cx == null) {
+                    cx = new ChannelException(x);
+                }
                 cx.addFaultyMember(destination[i],x);
             }
         }
-        if (cx!=null ) throw cx;
+        if (cx!=null ) {
+            throw cx;
+        }
     }
 
 
@@ -68,15 +71,22 @@ public class MultipointBioSender extends AbstractSender implements MultiPointSen
                     bioSenders.put(destination[i], sender);
                 }
                 result[i] = sender;
-                if (!result[i].isConnected() ) result[i].connect();
+                if (!result[i].isConnected() ) {
+                    result[i].connect();
+                }
                 result[i].keepalive();
             }catch (Exception x ) {
-                if ( cx== null ) cx = new ChannelException(x);
+                if ( cx== null ) {
+                    cx = new ChannelException(x);
+                }
                 cx.addFaultyMember(destination[i],x);
             }
         }
-        if ( cx!=null ) throw cx;
-        else return result;
+        if ( cx!=null ) {
+            throw cx;
+        } else {
+            return result;
+        }
     }
 
     @Override
@@ -95,12 +105,16 @@ public class MultipointBioSender extends AbstractSender implements MultiPointSen
                 BioSender sender = bioSenders.get(mbr);
                 sender.disconnect();
             }catch ( Exception e ) {
-                if ( x == null ) x = new ChannelException(e);
+                if ( x == null ) {
+                    x = new ChannelException(e);
+                }
                 x.addFaultyMember(mbr,e);
             }
             bioSenders.remove(mbr);
         }
-        if ( x != null ) throw x;
+        if ( x != null ) {
+            throw x;
+        }
     }
 
     @Override
@@ -114,19 +128,29 @@ public class MultipointBioSender extends AbstractSender implements MultiPointSen
     public void remove(Member member) {
         //disconnect senders
         BioSender sender = bioSenders.remove(member);
-        if ( sender != null ) sender.disconnect();
+        if ( sender != null ) {
+            sender.disconnect();
+        }
     }
 
 
     @Override
     public synchronized void disconnect() {
-        try {close(); }catch (Exception x){/* Ignore */}
+        try {
+            close();
+        } catch (Exception x) {
+            // Ignore
+        }
         setConnected(false);
     }
 
     @Override
-    public void finalize() throws Throwable {
-        try {disconnect(); }catch ( Exception e){/* Ignore */}
+    protected void finalize() throws Throwable {
+        try {
+            disconnect();
+        } catch (Exception e) {
+            // Ignore
+        }
         super.finalize();
     }
 
@@ -135,7 +159,7 @@ public class MultipointBioSender extends AbstractSender implements MultiPointSen
     public boolean keepalive() {
         boolean result = false;
         @SuppressWarnings("unchecked")
-        Map.Entry<Member,BioSender>[] entries = bioSenders.entrySet().toArray(new Map.Entry[bioSenders.size()]);
+        Map.Entry<Member,BioSender>[] entries = bioSenders.entrySet().toArray(new Map.Entry[0]);
         for ( int i=0; i<entries.length; i++ ) {
             BioSender sender = entries[i].getValue();
             if ( sender.keepalive() ) {

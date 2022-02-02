@@ -119,8 +119,9 @@ public class StoreConfig implements IStoreConfig {
     public synchronized void storeServer(String aServerName, boolean backup,
             boolean externalAllowed) throws MalformedObjectNameException {
         if (aServerName == null || aServerName.length() == 0) {
-            if (log.isErrorEnabled())
+            if (log.isErrorEnabled()) {
                 log.error("Please, call with a correct server ObjectName!");
+            }
             return;
         }
         MBeanServer mserver = MBeanUtils.createServer();
@@ -149,12 +150,14 @@ public class StoreConfig implements IStoreConfig {
                     store(aServer);
                 }
             } catch (Exception e) {
-                if (log.isInfoEnabled())
+                if (log.isInfoEnabled()) {
                     log.info("Object " + aServerName
                             + " is no a Server instance or store exception", e);
+                }
             }
-        } else if (log.isInfoEnabled())
+        } else if (log.isInfoEnabled()) {
             log.info("Server " + aServerName + " not found!");
+        }
     }
 
     /**
@@ -171,8 +174,9 @@ public class StoreConfig implements IStoreConfig {
     public synchronized void storeContext(String aContextName, boolean backup,
             boolean externalAllowed) throws MalformedObjectNameException {
         if (aContextName == null || aContextName.length() == 0) {
-            if (log.isErrorEnabled())
+            if (log.isErrorEnabled()) {
                 log.error("Please, call with a correct context ObjectName!");
+            }
             return;
         }
         MBeanServer mserver = MBeanUtils.createServer();
@@ -207,20 +211,23 @@ public class StoreConfig implements IStoreConfig {
                     } catch (Exception e) {
                         log.error(e);
                     }
-                } else
+                } else {
                     log.error("Missing configFile at Context "
                             + aContext.getPath() + " to store!");
+                }
             } catch (Exception e) {
-                if (log.isInfoEnabled())
+                if (log.isInfoEnabled()) {
                     log
                             .info(
                                     "Object "
                                             + aContextName
                                             + " is no a context instance or store exception",
                                     e);
+                }
             }
-        } else if (log.isInfoEnabled())
+        } else if (log.isInfoEnabled()) {
             log.info("Context " + aContextName + " not found!");
+        }
     }
 
     /**
@@ -253,26 +260,21 @@ public class StoreConfig implements IStoreConfig {
      */
     @Override
     public synchronized boolean store(Context aContext) {
-        URL configFile = aContext.getConfigFile();
-        if (configFile != null) {
-            try {
-                StoreDescription desc = null;
-                desc = getRegistry().findDescription(aContext.getClass());
-                if (desc != null) {
-                    boolean old = desc.isStoreSeparate();
-                    try {
-                        desc.setStoreSeparate(true);
-                        desc.getStoreFactory().store(null, -2, aContext);
-                    } finally {
-                        desc.setStoreSeparate(old);
-                    }
+        try {
+            StoreDescription desc = null;
+            desc = getRegistry().findDescription(aContext.getClass());
+            if (desc != null) {
+                boolean old = desc.isStoreSeparate();
+                try {
+                    desc.setStoreSeparate(true);
+                    desc.getStoreFactory().store(null, -2, aContext);
+                } finally {
+                    desc.setStoreSeparate(old);
                 }
-                return true;
-            } catch (Exception e) {
-                log.error(sm.getString("config.storeContextError", aContext.getName()), e);
             }
-        } else {
-            log.error("Missing configFile at Context " + aContext.getPath());
+            return true;
+        } catch (Exception e) {
+            log.error(sm.getString("config.storeContextError", aContext.getName()), e);
         }
         return false;
     }
@@ -292,8 +294,9 @@ public class StoreConfig implements IStoreConfig {
             desc.setStoreSeparate(false);
             desc.getStoreFactory().store(aWriter, indent, aContext);
         } finally {
-            if (desc != null)
+            if (desc != null) {
                 desc.setStoreSeparate(oldSeparate);
+            }
         }
     }
 

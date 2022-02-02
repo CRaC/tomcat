@@ -67,7 +67,6 @@ import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.mapper.MappingData;
-import org.apache.catalina.servlet4preview.http.ServletMapping;
 import org.apache.catalina.util.Introspection;
 import org.apache.catalina.util.ServerInfo;
 import org.apache.catalina.util.URLEncoder;
@@ -88,8 +87,7 @@ import org.apache.tomcat.util.res.StringManager;
  * @author Craig R. McClanahan
  * @author Remy Maucherat
  */
-@SuppressWarnings("deprecation")
-public class ApplicationContext implements org.apache.catalina.servlet4preview.ServletContext {
+public class ApplicationContext implements ServletContext {
 
     protected static final boolean STRICT_SERVLET_COMPLIANCE;
 
@@ -182,8 +180,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     /**
      * The string manager for this package.
      */
-    private static final StringManager sm =
-      StringManager.getManager(Constants.Package);
+    private static final StringManager sm = StringManager.getManager(ApplicationContext.class);
 
 
     /**
@@ -216,14 +213,13 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
     @Override
     public Object getAttribute(String name) {
-        return (attributes.get(name));
+        return attributes.get(name);
     }
 
 
     @Override
     public Enumeration<String> getAttributeNames() {
-        Set<String> names = new HashSet<>();
-        names.addAll(attributes.keySet());
+        Set<String> names = new HashSet<>(attributes.keySet());
         return Collections.enumeration(names);
     }
 
@@ -264,7 +260,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
                 pathMB.setString(uri);
 
                 MappingData mappingData = new MappingData();
-                ((Engine) host.getParent()).getService().getMapper().map(hostMB, pathMB, null, mappingData);
+                service.getMapper().map(hostMB, pathMB, null, mappingData);
                 child = mappingData.context;
             }
         } catch (Throwable t) {
@@ -315,8 +311,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
     @Override
     public Enumeration<String> getInitParameterNames() {
-        Set<String> names = new HashSet<>();
-        names.addAll(parameters.keySet());
+        Set<String> names = new HashSet<>(parameters.keySet());
         // Special handling for XML settings as these attributes will always be
         // available if they have been set on the context
         if (context.getTldValidation()) {
@@ -350,15 +345,18 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     @Override
     public String getMimeType(String file) {
 
-        if (file == null)
-            return (null);
+        if (file == null) {
+            return null;
+        }
         int period = file.lastIndexOf('.');
-        if (period < 0)
-            return (null);
+        if (period < 0) {
+            return null;
+        }
         String extension = file.substring(period + 1);
-        if (extension.length() < 1)
-            return (null);
-        return (context.findMimeMapping(extension));
+        if (extension.length() < 1) {
+            return null;
+        }
+        return context.findMimeMapping(extension);
 
     }
 
@@ -373,13 +371,15 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     public RequestDispatcher getNamedDispatcher(String name) {
 
         // Validate the name argument
-        if (name == null)
-            return (null);
+        if (name == null) {
+            return null;
+        }
 
         // Create and return a corresponding request dispatcher
         Wrapper wrapper = (Wrapper) context.findChild(name);
-        if (wrapper == null)
-            return (null);
+        if (wrapper == null) {
+            return null;
+        }
 
         return new ApplicationDispatcher(wrapper, null, null, null, null, null, name);
 
@@ -398,7 +398,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
         // Validate the path argument
         if (path == null) {
-            return (null);
+            return null;
         }
         if (!path.startsWith("/")) {
             throw new IllegalArgumentException(
@@ -424,14 +424,14 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         // Then normalize
         String normalizedUri = RequestUtil.normalize(uriNoParams);
         if (normalizedUri == null) {
-            return (null);
+            return null;
         }
 
         // Mapping is against the normalized uri
 
         if (getContext().getDispatchersUseEncodedPaths()) {
             // Decode
-            String decodedUri = UDecoder.URLDecode(normalizedUri);
+            String decodedUri = UDecoder.URLDecode(normalizedUri, StandardCharsets.UTF_8);
 
             // Security check to catch attempts to encode /../ sequences
             normalizedUri = RequestUtil.normalize(decodedUri);
@@ -459,10 +459,8 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             dispatchData.set(dd);
         }
 
-        MessageBytes uriMB = dd.uriMB;
-        uriMB.recycle();
-
         // Use the thread local mapping data
+        MessageBytes uriMB = dd.uriMB;
         MappingData mappingData = dd.mappingData;
 
         try {
@@ -484,7 +482,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             Wrapper wrapper = mappingData.wrapper;
             String wrapperPath = mappingData.wrapperPath.toString();
             String pathInfo = mappingData.pathInfo.toString();
-            ServletMapping mapping = new ApplicationMapping(mappingData).getServletMapping();
+            ApplicationMappingImpl mapping = new ApplicationMapping(mappingData).getHttpServletMapping();
 
             // Construct a RequestDispatcher to process this request
             return new ApplicationDispatcher(wrapper, uri, wrapperPath, pathInfo,
@@ -492,7 +490,11 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         } finally {
             // Recycle thread local data at the end of the request so references
             // are not held to a completed request as there is potential for
-            // that to trigger a memory leak if a context is unloaded.
+            // that to trigger a memory leak if a context is unloaded. Not
+            // strictly necessary here for uriMB but it needs to be recycled at
+            // some point so do it here for consistency with mappingData which
+            // must be recycled here.
+            uriMB.recycle();
             mappingData.recycle();
         }
     }
@@ -529,7 +531,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     @Override
     public URL getResource(String path) throws MalformedURLException {
 
-        String validatedPath = validateResourcePath(path, false);
+        String validatedPath = validateResourcePath(path, !GET_RESOURCE_REQUIRE_SLASH);
 
         if (validatedPath == null) {
             throw new MalformedURLException(
@@ -548,7 +550,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     @Override
     public InputStream getResourceAsStream(String path) {
 
-        String validatedPath = validateResourcePath(path, false);
+        String validatedPath = validateResourcePath(path, !GET_RESOURCE_REQUIRE_SLASH);
 
         if (validatedPath == null) {
             return null;
@@ -567,20 +569,16 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
      * Returns null if the input path is not valid or a path that will be
      * acceptable to resources.getResource().
      */
-    private String validateResourcePath(String path, boolean allowEmptyPath) {
+    private String validateResourcePath(String path, boolean addMissingInitialSlash) {
         if (path == null) {
             return null;
         }
 
-        if (path.length() == 0 && allowEmptyPath) {
-            return path;
-        }
-
         if (!path.startsWith("/")) {
-            if (GET_RESOURCE_REQUIRE_SLASH) {
-                return null;
-            } else {
+            if (addMissingInitialSlash) {
                 return "/" + path;
+            } else {
+                return null;
             }
         }
 
@@ -596,8 +594,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             return null;
         }
         if (!path.startsWith("/")) {
-            throw new IllegalArgumentException
-                (sm.getString("applicationContext.resourcePaths.iae", path));
+            throw new IllegalArgumentException (sm.getString("applicationContext.resourcePaths.iae", path));
         }
 
         WebResourceRoot resources = context.getResources();
@@ -678,26 +675,23 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
         // Notify interested application event listeners
         Object listeners[] = context.getApplicationEventListeners();
-        if ((listeners == null) || (listeners.length == 0))
+        if ((listeners == null) || (listeners.length == 0)) {
             return;
-        ServletContextAttributeEvent event =
-          new ServletContextAttributeEvent(context.getServletContext(),
-                                            name, value);
-        for (int i = 0; i < listeners.length; i++) {
-            if (!(listeners[i] instanceof ServletContextAttributeListener))
+        }
+        ServletContextAttributeEvent event = new ServletContextAttributeEvent(
+                context.getServletContext(), name, value);
+        for (Object obj : listeners) {
+            if (!(obj instanceof ServletContextAttributeListener)) {
                 continue;
-            ServletContextAttributeListener listener =
-                (ServletContextAttributeListener) listeners[i];
+            }
+            ServletContextAttributeListener listener = (ServletContextAttributeListener) obj;
             try {
-                context.fireContainerEvent("beforeContextAttributeRemoved",
-                                           listener);
+                context.fireContainerEvent("beforeContextAttributeRemoved", listener);
                 listener.attributeRemoved(event);
-                context.fireContainerEvent("afterContextAttributeRemoved",
-                                           listener);
+                context.fireContainerEvent("afterContextAttributeRemoved", listener);
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
-                context.fireContainerEvent("afterContextAttributeRemoved",
-                                           listener);
+                context.fireContainerEvent("afterContextAttributeRemoved", listener);
                 // FIXME - should we do anything besides log these?
                 log(sm.getString("applicationContext.attributeEvent"), t);
             }
@@ -709,8 +703,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     public void setAttribute(String name, Object value) {
         // Name cannot be null
         if (name == null) {
-            throw new NullPointerException
-                (sm.getString("applicationContext.setAttribute.namenull"));
+            throw new NullPointerException(sm.getString("applicationContext.setAttribute.namenull"));
         }
 
         // Null value is the same as removeAttribute()
@@ -721,53 +714,47 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
         // Add or replace the specified attribute
         // Check for read only attribute
-        if (readOnlyAttributes.containsKey(name))
+        if (readOnlyAttributes.containsKey(name)) {
             return;
+        }
 
         Object oldValue = attributes.put(name, value);
         boolean replaced = oldValue != null;
 
         // Notify interested application event listeners
         Object listeners[] = context.getApplicationEventListeners();
-        if ((listeners == null) || (listeners.length == 0))
+        if ((listeners == null) || (listeners.length == 0)) {
             return;
+        }
         ServletContextAttributeEvent event = null;
-        if (replaced)
-            event =
-                new ServletContextAttributeEvent(context.getServletContext(),
-                                                 name, oldValue);
-        else
-            event =
-                new ServletContextAttributeEvent(context.getServletContext(),
-                                                 name, value);
+        if (replaced) {
+            event = new ServletContextAttributeEvent(context.getServletContext(), name, oldValue);
+        } else {
+            event = new ServletContextAttributeEvent(context.getServletContext(), name, value);
+        }
 
-        for (int i = 0; i < listeners.length; i++) {
-            if (!(listeners[i] instanceof ServletContextAttributeListener))
+        for (Object obj : listeners) {
+            if (!(obj instanceof ServletContextAttributeListener)) {
                 continue;
-            ServletContextAttributeListener listener =
-                (ServletContextAttributeListener) listeners[i];
+            }
+            ServletContextAttributeListener listener = (ServletContextAttributeListener) obj;
             try {
                 if (replaced) {
-                    context.fireContainerEvent
-                        ("beforeContextAttributeReplaced", listener);
+                    context.fireContainerEvent("beforeContextAttributeReplaced", listener);
                     listener.attributeReplaced(event);
-                    context.fireContainerEvent("afterContextAttributeReplaced",
-                                               listener);
+                    context.fireContainerEvent("afterContextAttributeReplaced", listener);
                 } else {
-                    context.fireContainerEvent("beforeContextAttributeAdded",
-                                               listener);
+                    context.fireContainerEvent("beforeContextAttributeAdded", listener);
                     listener.attributeAdded(event);
-                    context.fireContainerEvent("afterContextAttributeAdded",
-                                               listener);
+                    context.fireContainerEvent("afterContextAttributeAdded", listener);
                 }
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
-                if (replaced)
-                    context.fireContainerEvent("afterContextAttributeReplaced",
-                                               listener);
-                else
-                    context.fireContainerEvent("afterContextAttributeAdded",
-                                               listener);
+                if (replaced) {
+                    context.fireContainerEvent("afterContextAttributeReplaced", listener);
+                } else {
+                    context.fireContainerEvent("afterContextAttributeAdded", listener);
+                }
                 // FIXME - should we do anything besides log these?
                 log(sm.getString("applicationContext.attributeEvent"), t);
             }
@@ -844,8 +831,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         } catch (InvocationTargetException e) {
             ExceptionUtils.handleThrowable(e.getCause());
             throw new ServletException(e);
-        } catch (IllegalAccessException | NamingException | InstantiationException |
-                ClassNotFoundException | NoSuchMethodException e) {
+        } catch (ReflectiveOperationException | NamingException e) {
             throw new ServletException(e);
         }
     }
@@ -880,7 +866,6 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     }
 
 
-    @Override
     public Dynamic addJspFile(String jspName, String jspFile) {
 
         // jspName is validated in addServlet()
@@ -981,8 +966,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
 
     @Override
-    public <T extends Servlet> T createServlet(Class<T> c)
-    throws ServletException {
+    public <T extends Servlet> T createServlet(Class<T> c) throws ServletException {
         try {
             @SuppressWarnings("unchecked")
             T servlet = (T) context.getInstanceManager().newInstance(c.getName());
@@ -991,8 +975,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         } catch (InvocationTargetException e) {
             ExceptionUtils.handleThrowable(e.getCause());
             throw new ServletException(e);
-        } catch (IllegalAccessException | NamingException | InstantiationException |
-                ClassNotFoundException | NoSuchMethodException e) {
+        } catch (ReflectiveOperationException | NamingException e) {
             throw new ServletException(e);
         }
     }
@@ -1027,11 +1010,10 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
         // SSL not enabled by default as it can only used on its own
         // Context > Host > Engine > Service
-        Service s = ((Engine) context.getParent().getParent()).getService();
-        Connector[] connectors = s.findConnectors();
+        Connector[] connectors = service.findConnectors();
         // Need at least one SSL enabled connector to use the SSL session ID.
         for (Connector connector : connectors) {
-            if (Boolean.TRUE.equals(connector.getAttribute("SSLEnabled"))) {
+            if (Boolean.TRUE.equals(connector.getProperty("SSLEnabled"))) {
                 supportedSessionTrackingModes.add(SessionTrackingMode.SSL);
                 break;
             }
@@ -1089,8 +1071,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     public boolean setInitParameter(String name, String value) {
         // Name cannot be null
         if (name == null) {
-            throw new NullPointerException
-                (sm.getString("applicationContext.setAttribute.namenull"));
+            throw new NullPointerException(sm.getString("applicationContext.setAttribute.namenull"));
         }
         if (!context.getState().equals(LifecycleState.STARTING_PREP)) {
             throw new IllegalStateException(
@@ -1137,8 +1118,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             throw new IllegalArgumentException(sm.getString(
                     "applicationContext.addListener.iae.cnfe", className),
                     e);
-        } catch (IllegalAccessException | NamingException | InstantiationException |
-                ClassNotFoundException | NoSuchMethodException e) {
+        } catch (ReflectiveOperationException| NamingException e) {
             throw new IllegalArgumentException(sm.getString(
                     "applicationContext.addListener.iae.cnfe", className),
                     e);
@@ -1165,16 +1145,17 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             match = true;
         }
 
-        if (t instanceof HttpSessionListener
-                || (t instanceof ServletContextListener &&
-                        newServletContextListenerAllowed)) {
+        if (t instanceof HttpSessionListener ||
+                (t instanceof ServletContextListener && newServletContextListenerAllowed)) {
             // Add listener directly to the list of instances rather than to
             // the list of class names.
             context.addApplicationLifecycleListener(t);
             match = true;
         }
 
-        if (match) return;
+        if (match) {
+            return;
+        }
 
         if (t instanceof ServletContextListener) {
             throw new IllegalArgumentException(sm.getString(
@@ -1193,8 +1174,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
             throws ServletException {
         try {
             @SuppressWarnings("unchecked")
-            T listener =
-                (T) context.getInstanceManager().newInstance(c);
+            T listener = (T) context.getInstanceManager().newInstance(c);
             if (listener instanceof ServletContextListener ||
                     listener instanceof ServletContextAttributeListener ||
                     listener instanceof ServletRequestListener ||
@@ -1210,8 +1190,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         } catch (InvocationTargetException e) {
             ExceptionUtils.handleThrowable(e.getCause());
             throw new ServletException(e);
-        } catch (IllegalAccessException | NamingException | InstantiationException |
-                NoSuchMethodException e) {
+        } catch (ReflectiveOperationException | NamingException e) {
             throw new ServletException(e);
         }
     }
@@ -1234,7 +1213,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
         }
 
         for (String role : roleNames) {
-            if (role == null || "".equals(role)) {
+            if (role == null || role.isEmpty()) {
                 throw new IllegalArgumentException(
                         sm.getString("applicationContext.role.iae",
                                 getContextPath()));
@@ -1304,7 +1283,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
 
         Container[] wrappers = context.findChildren();
         for (Container wrapper : wrappers) {
-            result.put(((Wrapper) wrapper).getName(),
+            result.put(wrapper.getName(),
                     new ApplicationServletRegistration(
                             (Wrapper) wrapper, context));
         }
@@ -1322,13 +1301,11 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     }
 
 
-    @Override
     public int getSessionTimeout() {
         return context.getSessionTimeout();
     }
 
 
-    @Override
     public void setSessionTimeout(int sessionTimeout) {
         if (!context.getState().equals(LifecycleState.STARTING_PREP)) {
             throw new IllegalStateException(
@@ -1340,13 +1317,11 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     }
 
 
-    @Override
     public String getRequestCharacterEncoding() {
         return context.getRequestCharacterEncoding();
     }
 
 
-    @Override
     public void setRequestCharacterEncoding(String encoding) {
         if (!context.getState().equals(LifecycleState.STARTING_PREP)) {
             throw new IllegalStateException(
@@ -1358,13 +1333,11 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     }
 
 
-    @Override
     public String getResponseCharacterEncoding() {
         return context.getResponseCharacterEncoding();
     }
 
 
-    @Override
     public void setResponseCharacterEncoding(String encoding) {
         if (!context.getState().equals(LifecycleState.STARTING_PREP)) {
             throw new IllegalStateException(
@@ -1387,10 +1360,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
     protected void clearAttributes() {
 
         // Create list of attributes to be removed
-        ArrayList<String> list = new ArrayList<>();
-        for (String s : attributes.keySet()) {
-            list.add(s);
-        }
+        List<String> list = new ArrayList<>(attributes.keySet());
 
         // Remove application originated attributes
         // (read only attributes will be left in place)
@@ -1405,9 +1375,7 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
      * @return the facade associated with this ApplicationContext.
      */
     protected ServletContext getFacade() {
-
-        return (this.facade);
-
+        return this.facade;
     }
 
 
@@ -1416,8 +1384,9 @@ public class ApplicationContext implements org.apache.catalina.servlet4preview.S
      */
     void setAttributeReadOnly(String name) {
 
-        if (attributes.containsKey(name))
+        if (attributes.containsKey(name)) {
             readOnlyAttributes.put(name, name);
+        }
 
     }
 

@@ -191,10 +191,7 @@ public class JspCServletContext implements ServletContext {
             throws JasperException {
         List<URL> resourceJars = new ArrayList<>();
         // Build list of potential resource JARs. Use same ordering as ContextConfig
-        Set<WebXml> resourceFragments = new LinkedHashSet<>();
-        for (WebXml fragment : orderedFragments) {
-            resourceFragments.add(fragment);
-        }
+        Set<WebXml> resourceFragments = new LinkedHashSet<>(orderedFragments);
         for (WebXml fragment : fragments) {
             if (!resourceFragments.contains(fragment)) {
                 resourceFragments.add(fragment);
@@ -345,10 +342,12 @@ public class JspCServletContext implements ServletContext {
      */
     @Override
     public String getRealPath(String path) {
-        if (!myResourceBaseURL.getProtocol().equals("file"))
+        if (!myResourceBaseURL.getProtocol().equals("file")) {
             return null;
-        if (!path.startsWith("/"))
+        }
+        if (!path.startsWith("/")) {
             return null;
+        }
         try {
             File f = new File(getResource(path).toURI());
             return f.getAbsolutePath();
@@ -383,7 +382,7 @@ public class JspCServletContext implements ServletContext {
     public URL getResource(String path) throws MalformedURLException {
 
         if (!path.startsWith("/")) {
-            throw new MalformedURLException("Path '" + path + "' does not start with '/'");
+            throw new MalformedURLException(Localizer.getMessage("jsp.error.URLMustStartWithSlash", path));
         }
 
         // Strip leading '/'
@@ -422,14 +421,12 @@ public class JspCServletContext implements ServletContext {
      */
     @Override
     public InputStream getResourceAsStream(String path) {
-
         try {
-            return (getResource(path).openStream());
+            return getResource(path).openStream();
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
-            return (null);
+            return null;
         }
-
     }
 
 
@@ -452,12 +449,12 @@ public class JspCServletContext implements ServletContext {
             if (theBaseDir.isDirectory()) {
                 String theFiles[] = theBaseDir.list();
                 if (theFiles != null) {
-                    for (int i = 0; i < theFiles.length; i++) {
-                        File testFile = new File(basePath + File.separator + theFiles[i]);
+                    for (String theFile : theFiles) {
+                        File testFile = new File(basePath + File.separator + theFile);
                         if (testFile.isFile()) {
-                            thePaths.add(path + theFiles[i]);
+                            thePaths.add(path + theFile);
                         } else if (testFile.isDirectory()) {
-                            thePaths.add(path + theFiles[i] + "/");
+                            thePaths.add(path + theFile + "/");
                         }
                     }
                 }
@@ -477,7 +474,7 @@ public class JspCServletContext implements ServletContext {
                         if (entryName.startsWith(jarPath) &&
                                 entryName.length() > jarPath.length()) {
                             // Let the Set implementation handle duplicates
-                            int sep = entryName.indexOf("/", jarPath.length());
+                            int sep = entryName.indexOf('/', jarPath.length());
                             if (sep < 0) {
                                 // This is a file - strip leading "META-INF/resources"
                                 thePaths.add(entryName.substring(18));
@@ -525,7 +522,7 @@ public class JspCServletContext implements ServletContext {
      */
     @Override
     public String getServletContextName() {
-        return (getServerInfo());
+        return getServerInfo();
     }
 
 
@@ -537,7 +534,7 @@ public class JspCServletContext implements ServletContext {
     @Override
     @Deprecated
     public Enumeration<String> getServletNames() {
-        return (new Vector<String>().elements());
+        return new Vector<String>().elements();
     }
 
 
@@ -549,7 +546,7 @@ public class JspCServletContext implements ServletContext {
     @Override
     @Deprecated
     public Enumeration<Servlet> getServlets() {
-        return (new Vector<Servlet>().elements());
+        return new Vector<Servlet>().elements();
     }
 
 

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.juli;
 
 import java.io.File;
@@ -36,8 +35,8 @@ public class TestFileHandler {
     private static final String PREFIX_2 = "test.";
     private static final String PREFIX_3 = "";
     private static final String PREFIX_4 = "localhost1";
-    private static final String SUFIX_1 = ".log";
-    private static final String SUFIX_2 = ".txt";
+    private static final String SUFFIX_1 = ".log";
+    private static final String SUFFIX_2 = ".txt";
 
     private File logsDir;
 
@@ -50,17 +49,18 @@ public class TestFileHandler {
         Path logsBasePath = FileSystems.getDefault().getPath(logsBase.getAbsolutePath());
         logsDir = Files.createTempDirectory(logsBasePath, "test").toFile();
 
-        generateLogFiles(logsDir, PREFIX_1, SUFIX_2, 3);
-        generateLogFiles(logsDir, PREFIX_2, SUFIX_1, 3);
-        generateLogFiles(logsDir, PREFIX_3, SUFIX_1, 3);
-        generateLogFiles(logsDir, PREFIX_4, SUFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_1, SUFFIX_2, 3);
+        generateLogFiles(logsDir, PREFIX_2, SUFFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_3, SUFFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_4, SUFFIX_1, 3);
 
         Calendar date = Calendar.getInstance();
         date.add(Calendar.DAY_OF_MONTH, -3);
         SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH-mm-ss.SSS");
-        File file = new File(logsDir, PREFIX_1 + formatter.format(date.getTime()) + SUFIX_1);
-        file.createNewFile();
-
+        File file = new File(logsDir, PREFIX_1 + formatter.format(date.getTime()) + SUFFIX_1);
+        if (!file.createNewFile()) {
+            Assert.fail("Unable to create " + file.getAbsolutePath());
+        }
     }
 
     @After
@@ -68,17 +68,17 @@ public class TestFileHandler {
         File[] files = logsDir.listFiles();
         if (files != null) {
             for (File file : files) {
-                file.delete();
+                Assert.assertTrue("Failed to delete [" + file + "]", file.delete());
             }
-            logsDir.delete();
+            Assert.assertTrue("Failed to create [" + logsDir + "]", logsDir.delete());
         }
     }
 
     @Test
     public void testCleanOnInitOneHandler() throws Exception {
-        generateLogFiles(logsDir, PREFIX_1, SUFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_1, SUFFIX_1, 3);
 
-        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFIX_1, 2);
+        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFFIX_1, 2);
 
         Thread.sleep(1000);
 
@@ -89,12 +89,12 @@ public class TestFileHandler {
 
     @Test
     public void testCleanOnInitMultipleHandlers() throws Exception {
-        generateLogFiles(logsDir, PREFIX_1, SUFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_1, SUFFIX_1, 3);
 
-        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFIX_1, 2);
-        FileHandler fh2 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFIX_2, 2);
-        FileHandler fh3 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_2, SUFIX_1, 2);
-        FileHandler fh4 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_3, SUFIX_1, 2);
+        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFFIX_1, 2);
+        FileHandler fh2 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFFIX_2, 2);
+        FileHandler fh3 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_2, SUFFIX_1, 2);
+        FileHandler fh4 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_3, SUFFIX_1, 2);
 
         Thread.sleep(1000);
 
@@ -108,9 +108,9 @@ public class TestFileHandler {
 
     @Test
     public void testCleanDisabled() throws Exception {
-        generateLogFiles(logsDir, PREFIX_1, SUFIX_1, 3);
+        generateLogFiles(logsDir, PREFIX_1, SUFFIX_1, 3);
 
-        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFIX_1, -1);
+        FileHandler fh1 = new FileHandler(logsDir.getAbsolutePath(), PREFIX_1, SUFFIX_1, -1);
 
         Thread.sleep(1000);
 
@@ -119,14 +119,16 @@ public class TestFileHandler {
         fh1.close();
     }
 
-    private void generateLogFiles(File dir, String prefix, String sufix, int amount)
+    private void generateLogFiles(File dir, String prefix, String suffix, int amount)
             throws IOException {
         Calendar cal = Calendar.getInstance();
         SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
         for (int i = 0; i < amount; i++) {
             cal.add(Calendar.DAY_OF_MONTH, -1);
-            File file = new File(dir, prefix + formatter.format(cal.getTime()) + sufix);
-            file.createNewFile();
+            File file = new File(dir, prefix + formatter.format(cal.getTime()) + suffix);
+            if (!file.createNewFile()) {
+                Assert.fail("Unable to create " + file.getAbsolutePath());
+            }
         }
     }
 }

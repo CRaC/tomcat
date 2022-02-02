@@ -14,8 +14,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
-
 package javax.servlet.jsp.tagext;
 
 /**
@@ -46,7 +44,7 @@ package javax.servlet.jsp.tagext;
  * getVariableInfo().
  *
  * <p>
- * <tt>NOTE:</tt> It is a (translation time) error for a tag definition
+ * <b>NOTE:</b> It is a (translation time) error for a tag definition
  * in a TLD with one or more variable subelements to have an associated
  * TagExtraInfo implementation that returns a VariableInfo array with
  * one or more elements from a call to getVariableInfo().
@@ -105,7 +103,7 @@ public abstract class TagExtraInfo {
      * @param data The TagData instance.
      * @return A null object, or zero length array if no errors, an
      *     array of ValidationMessages otherwise.
-     * @since 2.0
+     * @since JSP 2.0
      */
     public ValidationMessage[] validate( TagData data ) {
         ValidationMessage[] result = null;

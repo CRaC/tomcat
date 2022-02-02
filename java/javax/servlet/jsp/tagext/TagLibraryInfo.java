@@ -119,7 +119,7 @@ public abstract class TagLibraryInfo {
      * @return the TagFileInfo objects corresponding to the tag files defined by
      *         this tag library, or a zero length array if this tag library
      *         defines no tags files
-     * @since 2.0
+     * @since JSP 2.0
      */
     public TagFileInfo[] getTagFiles() {
         return tagFiles;
@@ -141,9 +141,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (int i = 0; i < tags.length; i++) {
-            if (shortname.equals(tags[i].getTagName())) {
-                return tags[i];
+        for (TagInfo tag : tags) {
+            if (shortname.equals(tag.getTagName())) {
+                return tag;
             }
         }
         return null;
@@ -157,7 +157,7 @@ public abstract class TagLibraryInfo {
      *            The short name (no prefix) of the tag
      * @return the TagFileInfo for the specified Tag file, or null if no Tag
      *         file is found
-     * @since 2.0
+     * @since JSP 2.0
      */
     public TagFileInfo getTagFile(String shortname) {
         TagFileInfo tagFiles[] = getTagFiles();
@@ -166,9 +166,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (int i = 0; i < tagFiles.length; i++) {
-            if (tagFiles[i].getName().equals(shortname)) {
-                return tagFiles[i];
+        for (TagFileInfo tagFile : tagFiles) {
+            if (tagFile.getName().equals(shortname)) {
+                return tagFile;
             }
         }
         return null;
@@ -179,7 +179,7 @@ public abstract class TagLibraryInfo {
      *
      * @return the functions defined in this tag library, or a zero length array
      *         if the tag library defines no functions.
-     * @since 2.0
+     * @since JSP 2.0
      */
     public FunctionInfo[] getFunctions() {
         return functions;
@@ -193,7 +193,7 @@ public abstract class TagLibraryInfo {
      *            The name (no prefix) of the function
      * @return the FunctionInfo for the function with the given name, or null if
      *         no such function exists
-     * @since 2.0
+     * @since JSP 2.0
      */
     public FunctionInfo getFunction(String name) {
 
@@ -201,9 +201,9 @@ public abstract class TagLibraryInfo {
             return null;
         }
 
-        for (int i = 0; i < functions.length; i++) {
-            if (functions[i].getName().equals(name)) {
-                return functions[i];
+        for (FunctionInfo function : functions) {
+            if (function.getName().equals(name)) {
+                return function;
             }
         }
         return null;
@@ -221,7 +221,7 @@ public abstract class TagLibraryInfo {
      *         tag libraries (including this TagLibraryInfo) imported by taglib
      *         directives in the translation unit that references this
      *         TagLibraryInfo.
-     * @since 2.1
+     * @since JSP 2.1
      */
     public abstract javax.servlet.jsp.tagext.TagLibraryInfo[] getTagLibraryInfos();
 
@@ -246,14 +246,14 @@ public abstract class TagLibraryInfo {
     /**
      * An array describing the tag files that are defined in this tag library.
      *
-     * @since 2.0
+     * @since JSP 2.0
      */
     protected TagFileInfo[] tagFiles;
 
     /**
      * An array describing the functions that are defined in this tag library.
      *
-     * @since 2.0
+     * @since JSP 2.0
      */
     protected FunctionInfo[] functions;
 

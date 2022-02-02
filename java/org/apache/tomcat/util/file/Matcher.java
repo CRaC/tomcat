@@ -15,7 +15,6 @@
  *  limitations under the License.
  *
  */
-
 package org.apache.tomcat.util.file;
 
 import java.util.Set;
@@ -106,8 +105,8 @@ public final class Matcher {
         char ch;
 
         boolean containsStar = false;
-        for (int i = 0; i < patArr.length; i++) {
-            if (patArr[i] == '*') {
+        for (char c : patArr) {
+            if (c == '*') {
                 containsStar = true;
                 break;
             }

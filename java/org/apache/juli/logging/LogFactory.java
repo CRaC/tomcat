@@ -17,7 +17,6 @@
 package org.apache.juli.logging;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.FileSystems;
 import java.util.ServiceLoader;
 import java.util.logging.LogManager;
@@ -133,8 +132,7 @@ public class LogFactory {
 
         try {
             return discoveredLogConstructor.newInstance(name);
-        } catch (InstantiationException | IllegalAccessException | IllegalArgumentException |
-                InvocationTargetException e) {
+        } catch (ReflectiveOperationException | IllegalArgumentException e) {
             throw new LogConfigurationException(e);
         }
     }
@@ -207,8 +205,7 @@ public class LogFactory {
      */
     public static Log getLog(Class<?> clazz)
         throws LogConfigurationException {
-        return (getFactory().getInstance(clazz));
-
+        return getFactory().getInstance(clazz);
     }
 
 
@@ -227,8 +224,7 @@ public class LogFactory {
      */
     public static Log getLog(String name)
         throws LogConfigurationException {
-        return (getFactory().getInstance(name));
-
+        return getFactory().getInstance(name);
     }
 
 

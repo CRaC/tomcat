@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.tomcat.util.net.openssl.ciphers;
 
 public enum Authentication {
@@ -29,6 +28,6 @@ public enum Authentication {
     GOST94 /* GOST R 34.10-94 signature auth */,
     GOST01 /* GOST R 34.10-2001 */,
     FZA    /* Fortezza */,
-    SRP,
+    SRP    /* Secure Remote Password */,
     ANY    /* TLS 1.3 */
 }

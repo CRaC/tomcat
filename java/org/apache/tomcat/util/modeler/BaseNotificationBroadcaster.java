@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.tomcat.util.modeler;
 
 
@@ -95,8 +93,9 @@ public class BaseNotificationBroadcaster implements NotificationBroadcaster {
                             oldFilter.clear();
                         } else {
                             if (oldNames.length != 0) {
-                                for (int i = 0; i < newNames.length; i++)
-                                    oldFilter.addAttribute(newNames[i]);
+                                for (String newName : newNames) {
+                                    oldFilter.addAttribute(newName);
+                                }
                             }
                         }
                         return;
@@ -118,9 +117,7 @@ public class BaseNotificationBroadcaster implements NotificationBroadcaster {
      */
     @Override
     public MBeanNotificationInfo[] getNotificationInfo() {
-
-        return (new MBeanNotificationInfo[0]);
-
+        return new MBeanNotificationInfo[0];
     }
 
 
@@ -142,8 +139,9 @@ public class BaseNotificationBroadcaster implements NotificationBroadcaster {
                 entries.iterator();
             while (items.hasNext()) {
                 BaseNotificationBroadcasterEntry item = items.next();
-                if (item.listener == listener)
+                if (item.listener == listener) {
                     items.remove();
+                }
             }
         }
 
@@ -160,8 +158,9 @@ public class BaseNotificationBroadcaster implements NotificationBroadcaster {
         synchronized (entries) {
             for (BaseNotificationBroadcasterEntry item : entries) {
                 if ((item.filter != null) &&
-                    (!item.filter.isNotificationEnabled(notification)))
+                    (!item.filter.isNotificationEnabled(notification))) {
                     continue;
+                }
                 item.listener.handleNotification(notification, item.handback);
             }
         }

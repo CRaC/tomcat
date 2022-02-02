@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.core;
 
 
@@ -26,6 +25,7 @@ import java.util.List;
 import org.apache.catalina.Lifecycle;
 import org.apache.catalina.LifecycleEvent;
 import org.apache.catalina.LifecycleListener;
+import org.apache.catalina.Server;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.jni.Library;
@@ -39,11 +39,18 @@ import org.apache.tomcat.util.res.StringManager;
 /**
  * Implementation of <code>LifecycleListener</code> that will init and
  * and destroy APR.
+ * <p>
+ * This listener must only be nested within {@link Server} elements.
+ * <p>
+ * <strong>Note</strong>: If you are running Tomcat in an embedded fashion and
+ * have more than one Server instance per JVM, this listener <em>must not</em>
+ * be added to the {@code Server} instances, but handled outside by the calling
+ * code which is bootstrapping the embedded Tomcat instances. Not doing so will
+ * lead to JVM crashes.
  *
  * @since 4.1
  */
-public class AprLifecycleListener
-    implements LifecycleListener {
+public class AprLifecycleListener implements LifecycleListener {
 
     private static final Log log = LogFactory.getLog(AprLifecycleListener.class);
     private static boolean instanceCreated = false;
@@ -57,8 +64,7 @@ public class AprLifecycleListener
     /**
      * The string manager for this package.
      */
-    protected static final StringManager sm =
-        StringManager.getManager(Constants.Package);
+    protected static final StringManager sm = StringManager.getManager(AprLifecycleListener.class);
 
 
     // ---------------------------------------------- Constants
@@ -68,7 +74,7 @@ public class AprLifecycleListener
     protected static final int TCN_REQUIRED_MINOR = 2;
     protected static final int TCN_REQUIRED_PATCH = 14;
     protected static final int TCN_RECOMMENDED_MINOR = 2;
-    protected static final int TCN_RECOMMENDED_PV = 21;
+    protected static final int TCN_RECOMMENDED_PV = 30;
 
 
     // ---------------------------------------------- Properties
@@ -126,6 +132,10 @@ public class AprLifecycleListener
 
         if (Lifecycle.BEFORE_INIT_EVENT.equals(event.getType())) {
             synchronized (lock) {
+                if (!(event.getLifecycle() instanceof Server)) {
+                    log.warn(sm.getString("listener.notServer",
+                            event.getLifecycle().getClass().getSimpleName()));
+                }
                 init();
                 for (String msg : initInfoLogMessages) {
                     log.info(msg);
@@ -142,10 +152,10 @@ public class AprLifecycleListener
                 }
                 // Failure to initialize FIPS mode is fatal
                 if (!(null == FIPSMode || "off".equalsIgnoreCase(FIPSMode)) && !isFIPSModeActive()) {
-                    Error e = new Error(
-                            sm.getString("aprListener.initializeFIPSFailed"));
+                    String errorMessage = sm.getString("aprListener.initializeFIPSFailed");
+                    Error e = new Error(errorMessage);
                     // Log here, because thrown error might be not logged
-                    log.fatal(e.getMessage(), e);
+                    log.fatal(errorMessage, e);
                     throw e;
                 }
             }
@@ -218,8 +228,8 @@ public class AprLifecycleListener
             return;
         }
         if (apver < rqver) {
-            log.error(sm.getString("aprListener.tcnInvalid", major + "."
-                    + minor + "." + patch,
+            log.error(sm.getString("aprListener.tcnInvalid",
+                    Library.versionString(),
                     TCN_REQUIRED_MAJOR + "." +
                     TCN_REQUIRED_MINOR + "." +
                     TCN_REQUIRED_PATCH));
@@ -235,17 +245,15 @@ public class AprLifecycleListener
         }
         if (apver < rcver) {
             initInfoLogMessages.add(sm.getString("aprListener.tcnVersion",
-                    major + "." + minor + "." + patch,
+                    Library.versionString(),
                     TCN_REQUIRED_MAJOR + "." +
                     TCN_RECOMMENDED_MINOR + "." +
                     TCN_RECOMMENDED_PV));
         }
 
         initInfoLogMessages.add(sm.getString("aprListener.tcnValid",
-                major + "." + minor + "." + patch,
-                Library.APR_MAJOR_VERSION + "." +
-                Library.APR_MINOR_VERSION + "." +
-                Library.APR_PATCH_VERSION));
+                Library.versionString(),
+                Library.aprVersionString()));
 
         // Log APR flags
         initInfoLogMessages.add(sm.getString("aprListener.flags",
@@ -419,6 +427,10 @@ public class AprLifecycleListener
 
     public static boolean getUseOpenSSL() {
         return useOpenSSL;
+    }
+
+    public static boolean isInstanceCreated() {
+        return instanceCreated;
     }
 
 }

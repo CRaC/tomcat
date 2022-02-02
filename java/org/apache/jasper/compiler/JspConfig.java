@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.jasper.compiler;
 
 import java.util.ArrayList;
@@ -330,8 +329,7 @@ public class JspConfig {
         String isELIgnored = defaultIsELIgnored;
         String isScriptingInvalid = defaultIsScriptingInvalid;
         String pageEncoding = null;
-        String isDeferedSyntaxAllowedAsLiteral =
-            defaultDeferedSyntaxAllowedAsLiteral;
+        String isDeferedSyntaxAllowedAsLiteral = defaultDeferedSyntaxAllowedAsLiteral;
         String isTrimDirectiveWhitespaces = defaultTrimDirectiveWhitespaces;
         String defaultContentType = defaultDefaultContentType;
         String buffer = defaultBuffer;
@@ -377,7 +375,7 @@ public class JspConfig {
     }
 
     /**
-     * To find out if an uri matches an url pattern in jsp config.  If so,
+     * To find out if a uri matches a url pattern in jsp config.  If so,
      * then the uri is a JSP page.  This is used primarily for jspc.
      * @param uri The path to check
      * @return <code>true</code> if the path denotes a JSP page

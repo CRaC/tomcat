@@ -30,10 +30,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
-import java.util.Vector;
+import java.util.Set;
 
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletResponse;
@@ -43,11 +43,11 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpServletResponseWrapper;
 
 import org.apache.catalina.Context;
-import org.apache.catalina.Globals;
 import org.apache.catalina.Session;
 import org.apache.catalina.security.SecurityUtil;
 import org.apache.catalina.util.SessionConfig;
 import org.apache.coyote.ActionCode;
+import org.apache.coyote.ContinueResponseTiming;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.CharChunk;
@@ -92,7 +92,10 @@ public class Response implements HttpServletResponse {
 
     /**
      * The date format we will use for creating date headers.
+     *
+     * @deprecated Unused. This will be removed in Tomcat 10
      */
+    @Deprecated
     protected SimpleDateFormat format = null;
 
 
@@ -142,7 +145,7 @@ public class Response implements HttpServletResponse {
      * @return the Context within which this Request is being processed.
      */
     public Context getContext() {
-        return (request.getContext());
+        return request.getContext();
     }
 
 
@@ -232,7 +235,7 @@ public class Response implements HttpServletResponse {
         isCharacterEncodingSet = false;
 
         applicationResponse = null;
-        if (Globals.IS_SECURITY_ENABLED || Connector.RECYCLE_FACADES) {
+        if (getRequest().getDiscardFacades()) {
             if (facade != null) {
                 facade.clear();
                 facade = null;
@@ -245,7 +248,7 @@ public class Response implements HttpServletResponse {
                 writer.clear();
                 writer = null;
             }
-        } else {
+        } else if (writer != null) {
             writer.recycle();
         }
 
@@ -301,9 +304,9 @@ public class Response implements HttpServletResponse {
      * @return <code>true</code> if the application has committed the response
      */
     public boolean isAppCommitted() {
-        return (this.appCommitted || isCommitted() || isSuspended()
+        return this.appCommitted || isCommitted() || isSuspended()
                 || ((getContentLength() > 0)
-                    && (getContentWritten() >= getContentLength())));
+                    && (getContentWritten() >= getContentLength()));
     }
 
 
@@ -316,7 +319,7 @@ public class Response implements HttpServletResponse {
      * @return the Request with which this Response is associated.
      */
     public org.apache.catalina.connector.Request getRequest() {
-        return (this.request);
+        return this.request;
     }
 
     /**
@@ -564,7 +567,7 @@ public class Response implements HttpServletResponse {
      */
     @Override
     public Locale getLocale() {
-        return (getCoyoteResponse().getLocale());
+        return getCoyoteResponse().getLocale();
     }
 
 
@@ -749,6 +752,12 @@ public class Response implements HttpServletResponse {
 
         if (type == null) {
             getCoyoteResponse().setContentType(null);
+            try {
+                getCoyoteResponse().setCharacterEncoding(null);
+            } catch (IllegalArgumentException e) {
+                // Can never happen when calling with null
+            }
+            isCharacterEncodingSet = false;
             return;
         }
 
@@ -760,9 +769,17 @@ public class Response implements HttpServletResponse {
             return;
         }
 
-        getCoyoteResponse().setContentTypeNoCharset(m[0]);
 
-        if (m[1] != null) {
+        if (m[1] == null) {
+            // No charset and we know value is valid as cache lookup was
+            // successful
+            // Pass-through user provided value in case user-agent is buggy and
+            // requires specific format
+            getCoyoteResponse().setContentTypeNoCharset(type);
+        } else {
+            // There is a charset so have to rebuild content-type without it
+            getCoyoteResponse().setContentTypeNoCharset(m[0]);
+
             // Ignore charset if getWriter() has already been called
             if (!usingWriter) {
                 try {
@@ -782,11 +799,10 @@ public class Response implements HttpServletResponse {
      * of the request. This method must be called prior to reading
      * request parameters or reading input using getReader().
      *
-     * @param characterEncoding String containing the name of the character
-     *                          encoding.
+     * @param charset String containing the name of the character encoding.
      */
     @Override
-    public void setCharacterEncoding(String characterEncoding) {
+    public void setCharacterEncoding(String charset) {
 
         if (isCommitted()) {
             return;
@@ -804,12 +820,16 @@ public class Response implements HttpServletResponse {
         }
 
         try {
-            getCoyoteResponse().setCharacterEncoding(characterEncoding);
+            getCoyoteResponse().setCharacterEncoding(charset);
         } catch (IllegalArgumentException e) {
-            log.warn(sm.getString("coyoteResponse.encoding.invalid", characterEncoding), e);
+            log.warn(sm.getString("coyoteResponse.encoding.invalid", charset), e);
             return;
         }
-        isCharacterEncodingSet = true;
+        if (charset == null) {
+            isCharacterEncodingSet = false;
+        } else {
+            isCharacterEncodingSet = true;
+        }
     }
 
 
@@ -843,16 +863,24 @@ public class Response implements HttpServletResponse {
             return;
         }
 
-        // In some error handling scenarios, the context is unknown
-        // (e.g. a 404 when a ROOT context is not present)
-        Context context = getContext();
-        if (context != null) {
-            String charset = context.getCharset(locale);
-            if (charset != null) {
-                try {
-                    getCoyoteResponse().setCharacterEncoding(charset);
-                } catch (IllegalArgumentException e) {
-                    log.warn(sm.getString("coyoteResponse.encoding.invalid", charset), e);
+        if (locale == null) {
+            try {
+                getCoyoteResponse().setCharacterEncoding(null);
+            } catch (IllegalArgumentException e) {
+                // Impossible when calling with null
+            }
+        } else {
+            // In some error handling scenarios, the context is unknown
+            // (e.g. a 404 when a ROOT context is not present)
+            Context context = getContext();
+            if (context != null) {
+                String charset = context.getCharset(locale);
+                if (charset != null) {
+                    try {
+                        getCoyoteResponse().setCharacterEncoding(charset);
+                    } catch (IllegalArgumentException e) {
+                        log.warn(sm.getString("coyoteResponse.encoding.invalid", charset), e);
+                    }
                 }
             }
         }
@@ -870,7 +898,6 @@ public class Response implements HttpServletResponse {
 
     @Override
     public Collection<String> getHeaderNames() {
-
         MimeHeaders headers = getCoyoteResponse().getMimeHeaders();
         int n = headers.size();
         List<String> result = new ArrayList<>(n);
@@ -884,12 +911,10 @@ public class Response implements HttpServletResponse {
 
     @Override
     public Collection<String> getHeaders(String name) {
-
-        Enumeration<String> enumeration =
-                getCoyoteResponse().getMimeHeaders().values(name);
-        Vector<String> result = new Vector<>();
+        Enumeration<String> enumeration = getCoyoteResponse().getMimeHeaders().values(name);
+        Set<String> result = new LinkedHashSet<>();
         while (enumeration.hasMoreElements()) {
-            result.addElement(enumeration.nextElement());
+            result.add(enumeration.nextElement());
         }
         return result;
     }
@@ -976,11 +1001,11 @@ public class Response implements HttpServletResponse {
             return AccessController.doPrivileged(new PrivilegedAction<String>() {
                 @Override
                 public String run(){
-                    return getContext().getCookieProcessor().generateHeader(cookie);
+                    return getContext().getCookieProcessor().generateHeader(cookie, request.getRequest());
                 }
             });
         } else {
-            return getContext().getCookieProcessor().generateHeader(cookie);
+            return getContext().getCookieProcessor().generateHeader(cookie, request.getRequest());
         }
     }
 
@@ -1007,14 +1032,7 @@ public class Response implements HttpServletResponse {
             return;
         }
 
-        if (format == null) {
-            format = new SimpleDateFormat(FastHttpDateFormat.RFC1123_DATE,
-                                          Locale.US);
-            format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        }
-
-        addHeader(name, FastHttpDateFormat.formatDate(value, format));
-
+        addHeader(name, FastHttpDateFormat.formatDate(value));
     }
 
 
@@ -1047,8 +1065,9 @@ public class Response implements HttpServletResponse {
 
         char cc=name.charAt(0);
         if (cc=='C' || cc=='c') {
-            if (checkSpecialHeader(name, value))
-            return;
+            if (checkSpecialHeader(name, value)) {
+                return;
+            }
         }
 
         getCoyoteResponse().addHeader(name, value, charset);
@@ -1135,13 +1154,11 @@ public class Response implements HttpServletResponse {
      */
     @Override
     public String encodeRedirectURL(String url) {
-
         if (isEncodeable(toAbsolute(url))) {
-            return (toEncoded(url, request.getSessionInternal().getIdInternal()));
+            return toEncoded(url, request.getSessionInternal().getIdInternal());
         } else {
-            return (url);
+            return url;
         }
-
     }
 
 
@@ -1158,7 +1175,7 @@ public class Response implements HttpServletResponse {
     @Override
     @Deprecated
     public String encodeRedirectUrl(String url) {
-        return (encodeRedirectURL(url));
+        return encodeRedirectURL(url);
     }
 
 
@@ -1187,9 +1204,9 @@ public class Response implements HttpServletResponse {
             } else if (url.equals(absolute) && !hasPath(url)) {
                 url += '/';
             }
-            return (toEncoded(url, request.getSessionInternal().getIdInternal()));
+            return toEncoded(url, request.getSessionInternal().getIdInternal());
         } else {
-            return (url);
+            return url;
         }
 
     }
@@ -1208,7 +1225,7 @@ public class Response implements HttpServletResponse {
     @Override
     @Deprecated
     public String encodeUrl(String url) {
-        return (encodeURL(url));
+        return encodeURL(url);
     }
 
 
@@ -1216,9 +1233,26 @@ public class Response implements HttpServletResponse {
      * Send an acknowledgement of a request.
      *
      * @exception IOException if an input/output error occurs
+     *
+     * @deprecated Unused. Will be removed in Tomcat 10.
+     *             Use {@link #sendAcknowledgement(ContinueResponseTiming)}.
      */
-    public void sendAcknowledgement()
-        throws IOException {
+    @Deprecated
+    public void sendAcknowledgement() throws IOException {
+        sendAcknowledgement(ContinueResponseTiming.ALWAYS);
+    }
+
+
+    /**
+     * Send an acknowledgement of a request.
+     *
+     * @param continueResponseTiming Indicates when the request for the ACK
+     *                               originated so it can be compared with the
+     *                               configured timing for ACK responses.
+     *
+     * @exception IOException if an input/output error occurs
+     */
+    public void sendAcknowledgement(ContinueResponseTiming continueResponseTiming) throws IOException {
 
         if (isCommitted()) {
             return;
@@ -1229,7 +1263,7 @@ public class Response implements HttpServletResponse {
             return;
         }
 
-        getCoyoteResponse().action(ActionCode.ACK, null);
+        getCoyoteResponse().action(ActionCode.ACK, continueResponseTiming);
     }
 
 
@@ -1372,13 +1406,7 @@ public class Response implements HttpServletResponse {
             return;
         }
 
-        if (format == null) {
-            format = new SimpleDateFormat(FastHttpDateFormat.RFC1123_DATE,
-                                          Locale.US);
-            format.setTimeZone(TimeZone.getTimeZone("GMT"));
-        }
-
-        setHeader(name, FastHttpDateFormat.formatDate(value, format));
+        setHeader(name, FastHttpDateFormat.formatDate(value));
     }
 
 
@@ -1406,8 +1434,9 @@ public class Response implements HttpServletResponse {
 
         char cc=name.charAt(0);
         if (cc=='C' || cc=='c') {
-            if (checkSpecialHeader(name, value))
+            if (checkSpecialHeader(name, value)) {
                 return;
+            }
         }
 
         getCoyoteResponse().setHeader(name, value);
@@ -1482,7 +1511,6 @@ public class Response implements HttpServletResponse {
 
 
     // ------------------------------------------------------ Protected Methods
-
 
     /**
      * Return <code>true</code> if the specified URL should be encoded with
@@ -1582,9 +1610,8 @@ public class Response implements HttpServletResponse {
             if (!file.startsWith(contextPath)) {
                 return false;
             }
-            String tok = ";" +
-                    SessionConfig.getSessionUriParamName(request.getContext()) +
-                    "=" + session.getIdInternal();
+            String tok = ";" + SessionConfig.getSessionUriParamName(request.getContext()) + "=" +
+                    session.getIdInternal();
             if( file.indexOf(tok, contextPath.length()) >= 0 ) {
                 return false;
             }
@@ -1610,7 +1637,7 @@ public class Response implements HttpServletResponse {
     protected String toAbsolute(String location) {
 
         if (location == null) {
-            return (location);
+            return location;
         }
 
         boolean leadingSlash = location.startsWith("/");
@@ -1626,10 +1653,7 @@ public class Response implements HttpServletResponse {
                 redirectURLCC.append(location, 0, location.length());
                 return redirectURLCC.toString();
             } catch (IOException e) {
-                IllegalArgumentException iae =
-                    new IllegalArgumentException(location);
-                iae.initCause(e);
-                throw iae;
+                throw new IllegalArgumentException(location, e);
             }
 
         } else if (leadingSlash || !UriUtil.hasScheme(location)) {
@@ -1666,10 +1690,7 @@ public class Response implements HttpServletResponse {
                                     }
                            });
                         } catch (PrivilegedActionException pae){
-                            IllegalArgumentException iae =
-                                new IllegalArgumentException(location);
-                            iae.initCause(pae.getException());
-                            throw iae;
+                            throw new IllegalArgumentException(location, pae.getException());
                         }
                     } else {
                         encodedURI = urlEncoder.encodeURL(relativePath, 0, pos);
@@ -1682,17 +1703,14 @@ public class Response implements HttpServletResponse {
 
                 normalize(redirectURLCC);
             } catch (IOException e) {
-                IllegalArgumentException iae =
-                    new IllegalArgumentException(location);
-                iae.initCause(e);
-                throw iae;
+                throw new IllegalArgumentException(location, e);
             }
 
             return redirectURLCC.toString();
 
         } else {
 
-            return (location);
+            return location;
 
         }
 
@@ -1788,9 +1806,7 @@ public class Response implements HttpServletResponse {
     }
 
     private void copyChars(char[] c, int dest, int src, int len) {
-        for (int pos = 0; pos < len; pos++) {
-            c[pos + dest] = c[pos + src];
-        }
+        System.arraycopy(c, src, c, dest, len);
     }
 
 
@@ -1821,9 +1837,8 @@ public class Response implements HttpServletResponse {
      * @return the encoded URL
      */
     protected String toEncoded(String url, String sessionId) {
-
         if ((url == null) || (sessionId == null)) {
-            return (url);
+            return url;
         }
 
         String path = url;
@@ -1841,15 +1856,14 @@ public class Response implements HttpServletResponse {
         }
         StringBuilder sb = new StringBuilder(path);
         if( sb.length() > 0 ) { // jsessionid can't be first.
-            sb.append(";");
+            sb.append(';');
             sb.append(SessionConfig.getSessionUriParamName(
                     request.getContext()));
-            sb.append("=");
+            sb.append('=');
             sb.append(sessionId);
         }
         sb.append(anchor);
         sb.append(query);
-        return (sb.toString());
-
+        return sb.toString();
     }
 }

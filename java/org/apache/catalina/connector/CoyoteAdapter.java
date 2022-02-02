@@ -67,7 +67,7 @@ public class CoyoteAdapter implements Adapter {
 
     // -------------------------------------------------------------- Constants
 
-    private static final String POWERED_BY = "Servlet/4.0 JSP/2.3 " +
+    private static final String POWERED_BY = "Servlet/3.1 JSP/2.3 " +
             "(" + ServerInfo.getServerInfo() + " Java/" +
             System.getProperty("java.vm.vendor") + "/" +
             System.getProperty("java.runtime.version") + ")";
@@ -133,13 +133,14 @@ public class CoyoteAdapter implements Adapter {
         Response response = (Response) res.getNote(ADAPTER_NOTES);
 
         if (request == null) {
-            throw new IllegalStateException("Dispatch may only happen on an existing request.");
+            throw new IllegalStateException(sm.getString("coyoteAdapter.nullRequest"));
         }
 
         boolean success = true;
         AsyncContextImpl asyncConImpl = request.getAsyncContextInternal();
 
         req.getRequestProcessor().setWorkerThreadName(THREAD_NAME.get());
+        req.setRequestThread();
 
         try {
             if (!request.isAsync()) {
@@ -159,21 +160,20 @@ public class CoyoteAdapter implements Adapter {
                 // trigger a close
                 success = false;
                 Throwable t = (Throwable)req.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
-                req.getAttributes().remove(RequestDispatcher.ERROR_EXCEPTION);
+                Context context = request.getContext();
                 ClassLoader oldCL = null;
                 try {
-                    oldCL = request.getContext().bind(false, null);
+                    oldCL = context.bind(false, null);
                     if (req.getReadListener() != null) {
                         req.getReadListener().onError(t);
                     }
                     if (res.getWriteListener() != null) {
                         res.getWriteListener().onError(t);
                     }
-                } finally {
-                    request.getContext().unbind(false, oldCL);
-                }
-                if (t != null) {
+                    res.action(ActionCode.CLOSE_NOW, t);
                     asyncConImpl.setErrorState(t, true);
+                } finally {
+                    context.unbind(false, oldCL);
                 }
             }
 
@@ -182,42 +182,64 @@ public class CoyoteAdapter implements Adapter {
                 WriteListener writeListener = res.getWriteListener();
                 ReadListener readListener = req.getReadListener();
                 if (writeListener != null && status == SocketEvent.OPEN_WRITE) {
+                    Context context = request.getContext();
                     ClassLoader oldCL = null;
                     try {
-                        oldCL = request.getContext().bind(false, null);
+                        oldCL = context.bind(false, null);
                         res.onWritePossible();
                         if (request.isFinished() && req.sendAllDataReadEvent() &&
                                 readListener != null) {
                             readListener.onAllDataRead();
                         }
+                        // User code may have swallowed an IOException
+                        if (response.getCoyoteResponse().isExceptionPresent()) {
+                            throw response.getCoyoteResponse().getErrorException();
+                        }
                     } catch (Throwable t) {
                         ExceptionUtils.handleThrowable(t);
+                        // Need to trigger the call to AbstractProcessor.setErrorState()
+                        // before the listener is called so the listener can call complete
+                        // Therefore no need to set success=false as that would trigger a
+                        // second call to AbstractProcessor.setErrorState()
+                        // https://bz.apache.org/bugzilla/show_bug.cgi?id=65001
                         writeListener.onError(t);
-                        success = false;
+                        res.action(ActionCode.CLOSE_NOW, t);
+                        asyncConImpl.setErrorState(t, true);
                     } finally {
-                        request.getContext().unbind(false, oldCL);
+                        context.unbind(false, oldCL);
                     }
                 } else if (readListener != null && status == SocketEvent.OPEN_READ) {
+                    Context context = request.getContext();
                     ClassLoader oldCL = null;
                     try {
-                        oldCL = request.getContext().bind(false, null);
+                        oldCL = context.bind(false, null);
                         // If data is being read on a non-container thread a
                         // dispatch with status OPEN_READ will be used to get
                         // execution back on a container thread for the
                         // onAllDataRead() event. Therefore, make sure
                         // onDataAvailable() is not called in this case.
                         if (!request.isFinished()) {
-                            readListener.onDataAvailable();
+                            req.onDataAvailable();
                         }
                         if (request.isFinished() && req.sendAllDataReadEvent()) {
                             readListener.onAllDataRead();
                         }
+                        // User code may have swallowed an IOException
+                        if (request.getCoyoteRequest().isExceptionPresent()) {
+                            throw request.getCoyoteRequest().getErrorException();
+                        }
                     } catch (Throwable t) {
                         ExceptionUtils.handleThrowable(t);
+                        // Need to trigger the call to AbstractProcessor.setErrorState()
+                        // before the listener is called so the listener can call complete
+                        // Therefore no need to set success=false as that would trigger a
+                        // second call to AbstractProcessor.setErrorState()
+                        // https://bz.apache.org/bugzilla/show_bug.cgi?id=65001
                         readListener.onError(t);
-                        success = false;
+                        res.action(ActionCode.CLOSE_NOW, t);
+                        asyncConImpl.setErrorState(t, true);
                     } finally {
-                        request.getContext().unbind(false, oldCL);
+                        context.unbind(false, oldCL);
                     }
                 }
             }
@@ -330,6 +352,7 @@ public class CoyoteAdapter implements Adapter {
         boolean postParseSuccess = false;
 
         req.getRequestProcessor().setWorkerThreadName(THREAD_NAME.get());
+        req.setRequestThread();
 
         try {
             // Parse and set Catalina and configuration specific
@@ -604,13 +627,11 @@ public class CoyoteAdapter implements Adapter {
         if (undecodedURI.equals("*")) {
             if (req.method().equalsIgnoreCase("OPTIONS")) {
                 StringBuilder allow = new StringBuilder();
-                allow.append("GET, HEAD, POST, PUT, DELETE");
+                allow.append("GET, HEAD, POST, PUT, DELETE, OPTIONS");
                 // Trace if allowed
                 if (connector.getAllowTrace()) {
                     allow.append(", TRACE");
                 }
-                // Always allow options
-                allow.append(", OPTIONS");
                 res.setHeader("Allow", allow.toString());
                 // Access log entry as processing won't reach AccessLogValve
                 connector.getService().getContainer().logAccess(request, response, 0, true);
@@ -626,26 +647,25 @@ public class CoyoteAdapter implements Adapter {
             // Copy the raw URI to the decodedURI
             decodedURI.duplicate(undecodedURI);
 
-            // Parse the path parameters. This will:
-            //   - strip out the path parameters
-            //   - convert the decodedURI to bytes
+            // Parse (and strip out) the path parameters
             parsePathParameters(req, request);
 
             // URI decoding
             // %xx decoding of the URL
             try {
-                req.getURLDecoder().convert(decodedURI, false);
+                req.getURLDecoder().convert(decodedURI.getByteChunk(), connector.getEncodedSolidusHandlingInternal());
             } catch (IOException ioe) {
                 response.sendError(400, "Invalid URI: " + ioe.getMessage());
             }
             // Normalization
-            if (!normalize(req.decodedURI())) {
-                response.sendError(400, "Invalid URI");
-            }
-            // Character decoding
-            convertURI(decodedURI, request);
-            // Check that the URI is still normalized
-            if (!checkNormalize(req.decodedURI())) {
+            if (normalize(req.decodedURI())) {
+                // Character decoding
+                convertURI(decodedURI, request);
+                // Check that the URI is still normalized
+                if (!checkNormalize(req.decodedURI())) {
+                    response.sendError(400, "Invalid URI");
+                }
+            } else {
                 response.sendError(400, "Invalid URI");
             }
         } else {
@@ -700,11 +720,11 @@ public class CoyoteAdapter implements Adapter {
             // because no ROOT context has been deployed or the URI was invalid
             // so no context could be mapped.
             if (request.getContext() == null) {
-                // Don't overwrite an existing error
-                if (!response.isError()) {
-                    response.sendError(404, "Not found");
-                }
                 // Allow processing to continue.
+                // If present, the rewrite Valve may rewrite this to a valid
+                // request.
+                // The StandardEngineValve will handle the case of a missing
+                // Host and the StandardHostValve the case of a missing Context.
                 // If present, the error reporting valve will provide a response
                 // body.
                 return true;
@@ -728,7 +748,16 @@ public class CoyoteAdapter implements Adapter {
             }
 
             // Look for session ID in cookies and SSL session
-            parseSessionCookiesId(request);
+            try {
+                parseSessionCookiesId(request);
+            } catch (IllegalArgumentException e) {
+                // Too many cookies
+                if (!response.isError()) {
+                    response.setError();
+                    response.sendError(400);
+                }
+                return true;
+            }
             parseSessionSslId(request);
 
             sessionID = request.getRequestedSessionId();
@@ -745,7 +774,7 @@ public class CoyoteAdapter implements Adapter {
                 // No session ID means no possibility of remap
                 if (contexts != null && sessionID != null) {
                     // Find the context associated with the session
-                    for (int i = (contexts.length); i > 0; i--) {
+                    for (int i = contexts.length; i > 0; i--) {
                         Context ctxt = contexts[i - 1];
                         if (ctxt.getManager().findSession(sessionID) != null) {
                             // We found a context. Is it the one that has
@@ -817,23 +846,24 @@ public class CoyoteAdapter implements Adapter {
             if (wrapper != null) {
                 String[] methods = wrapper.getServletMethods();
                 if (methods != null) {
-                    for (int i=0; i<methods.length; i++) {
-                        if ("TRACE".equals(methods[i])) {
+                    for (String method : methods) {
+                        if ("TRACE".equals(method)) {
                             continue;
                         }
                         if (header == null) {
-                            header = methods[i];
+                            header = method;
                         } else {
-                            header += ", " + methods[i];
+                            header += ", " + method;
                         }
                     }
                 }
             }
-            res.setStatus(405);
-            res.addHeader("Allow", header);
-            res.setMessage("TRACE method is not allowed");
-            request.getContext().logAccess(request, response, 0, true);
-            return false;
+            if (header != null) {
+                res.addHeader("Allow", header);
+            }
+            response.sendError(405, "TRACE method is not allowed");
+            // Safe to skip the remainder of this method.
+            return true;
         }
 
         doConnectorAuthenticationAuthorization(req, request);
@@ -872,9 +902,9 @@ public class CoyoteAdapter implements Adapter {
         }
 
         // Set the authorization type
-        String authtype = req.getAuthType().toString();
-        if (authtype != null) {
-            request.setAuthType(authtype);
+        String authType = req.getAuthType().toString();
+        if (authType != null) {
+            request.setAuthType(authType);
         }
     }
 
@@ -1138,13 +1168,14 @@ public class CoyoteAdapter implements Adapter {
             return false;
         }
 
-        // URL * is acceptable
-        if ((end - start == 1) && b[start] == (byte) '*') {
-            return true;
-        }
-
         int pos = 0;
         int index = 0;
+
+
+        // The URL must start with '/' (or '\' that will be replaced soon)
+        if (b[start] != (byte) '/' && b[start] != (byte) '\\') {
+            return false;
+        }
 
         // Replace '\' with '/'
         // Check for null byte
@@ -1155,15 +1186,9 @@ public class CoyoteAdapter implements Adapter {
                 } else {
                     return false;
                 }
-            }
-            if (b[pos] == (byte) 0) {
+            } else if (b[pos] == (byte) 0) {
                 return false;
             }
-        }
-
-        // The URL must start with '/'
-        if (b[start] != (byte) '/') {
-            return false;
         }
 
         // Replace "//" with "/"
@@ -1309,8 +1334,6 @@ public class CoyoteAdapter implements Adapter {
      * @param len Length
      */
     protected static void copyBytes(byte[] b, int dest, int src, int len) {
-        for (int pos = 0; pos < len; pos++) {
-            b[pos + dest] = b[pos + src];
-        }
+        System.arraycopy(b, src, b, dest, len);
     }
 }

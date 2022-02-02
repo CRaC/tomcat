@@ -20,19 +20,22 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.text.MessageFormat;
 import java.util.Enumeration;
 import java.util.ResourceBundle;
 
+import javax.servlet.AsyncEvent;
+import javax.servlet.AsyncListener;
 import javax.servlet.DispatcherType;
 import javax.servlet.GenericServlet;
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
-
+import javax.servlet.WriteListener;
 
 /**
  * Provides an abstract class to be subclassed to create
@@ -87,10 +90,8 @@ public abstract class HttpServlet extends GenericServlet {
     private static final String HEADER_IFMODSINCE = "If-Modified-Since";
     private static final String HEADER_LASTMOD = "Last-Modified";
 
-    private static final String LSTRING_FILE =
-        "javax.servlet.http.LocalStrings";
-    private static final ResourceBundle lStrings =
-        ResourceBundle.getBundle(LSTRING_FILE);
+    private static final String LSTRING_FILE = "javax.servlet.http.LocalStrings";
+    private static final ResourceBundle lStrings = ResourceBundle.getBundle(LSTRING_FILE);
 
 
     /**
@@ -111,7 +112,7 @@ public abstract class HttpServlet extends GenericServlet {
      * response, only the request header fields.
      *
      * <p>When overriding this method, read the request data,
-     * write the response headers, get the response's writer or
+     * write the response headers, get the response's noBodyWriter or
      * output stream object, and finally, write the response data.
      * It's best to include content type and encoding. When using
      * a <code>PrintWriter</code> object to return the response,
@@ -168,13 +169,8 @@ public abstract class HttpServlet extends GenericServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
         throws ServletException, IOException
     {
-        String protocol = req.getProtocol();
         String msg = lStrings.getString("http.method_get_not_supported");
-        if (protocol.endsWith("1.1")) {
-            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, msg);
-        } else {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, msg);
-        }
+        sendMethodNotAllowed(req, resp, msg);
     }
 
 
@@ -243,7 +239,11 @@ public abstract class HttpServlet extends GenericServlet {
         } else {
             NoBodyResponse response = new NoBodyResponse(resp);
             doGet(req, response);
-            response.setContentLength();
+            if (req.isAsyncStarted()) {
+                req.getAsyncContext().addListener(new NoBodyAsyncContextListener(response));
+            } else {
+                response.setContentLength();
+            }
         }
     }
 
@@ -258,7 +258,7 @@ public abstract class HttpServlet extends GenericServlet {
      * credit card numbers.
      *
      * <p>When overriding this method, read the request data,
-     * write the response headers, get the response's writer or output
+     * write the response headers, get the response's noBodyWriter or output
      * stream object, and finally, write the response data. It's best
      * to include content type and encoding. When using a
      * <code>PrintWriter</code> object to return the response, set the
@@ -308,13 +308,8 @@ public abstract class HttpServlet extends GenericServlet {
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
         throws ServletException, IOException {
 
-        String protocol = req.getProtocol();
         String msg = lStrings.getString("http.method_post_not_supported");
-        if (protocol.endsWith("1.1")) {
-            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, msg);
-        } else {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, msg);
-        }
+        sendMethodNotAllowed(req, resp, msg);
     }
 
 
@@ -363,13 +358,8 @@ public abstract class HttpServlet extends GenericServlet {
     protected void doPut(HttpServletRequest req, HttpServletResponse resp)
         throws ServletException, IOException {
 
-        String protocol = req.getProtocol();
         String msg = lStrings.getString("http.method_put_not_supported");
-        if (protocol.endsWith("1.1")) {
-            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, msg);
-        } else {
-            resp.sendError(HttpServletResponse.SC_BAD_REQUEST, msg);
-        }
+        sendMethodNotAllowed(req, resp, msg);
     }
 
 
@@ -411,12 +401,19 @@ public abstract class HttpServlet extends GenericServlet {
                             HttpServletResponse resp)
         throws ServletException, IOException {
 
-        String protocol = req.getProtocol();
         String msg = lStrings.getString("http.method_delete_not_supported");
-        if (protocol.endsWith("1.1")) {
-            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, msg);
-        } else {
+        sendMethodNotAllowed(req, resp, msg);
+    }
+
+
+    private void sendMethodNotAllowed(HttpServletRequest req, HttpServletResponse resp, String msg) throws IOException {
+        String protocol = req.getProtocol();
+        // Note: Tomcat reports "" for HTTP/0.9 although some implementations
+        //       may report HTTP/0.9
+        if (protocol.length() == 0 || protocol.endsWith("0.9") || protocol.endsWith("1.0")) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, msg);
+        } else {
+            resp.sendError(HttpServletResponse.SC_METHOD_NOT_ALLOWED, msg);
         }
     }
 
@@ -431,13 +428,9 @@ public abstract class HttpServlet extends GenericServlet {
         Method[] thisMethods = c.getDeclaredMethods();
 
         if ((parentMethods != null) && (parentMethods.length > 0)) {
-            Method[] allMethods =
-                new Method[parentMethods.length + thisMethods.length];
-            System.arraycopy(parentMethods, 0, allMethods, 0,
-                             parentMethods.length);
-            System.arraycopy(thisMethods, 0, allMethods, parentMethods.length,
-                             thisMethods.length);
-
+            Method[] allMethods = new Method[parentMethods.length + thisMethods.length];
+            System.arraycopy(parentMethods, 0, allMethods, 0, parentMethods.length);
+            System.arraycopy(thisMethods, 0, allMethods, parentMethods.length, thisMethods.length);
             thisMethods = allMethods;
         }
 
@@ -447,7 +440,7 @@ public abstract class HttpServlet extends GenericServlet {
 
     /**
      * Called by the server (via the <code>service</code> method)
-     * to allow a servlet to handle a OPTIONS request.
+     * to allow a servlet to handle an OPTIONS request.
      *
      * The OPTIONS request determines which HTTP methods
      * the server supports and
@@ -509,35 +502,63 @@ public abstract class HttpServlet extends GenericServlet {
                 ALLOW_GET = true;
                 ALLOW_HEAD = true;
             }
-            if (m.getName().equals("doPost"))
+            if (m.getName().equals("doPost")) {
                 ALLOW_POST = true;
-            if (m.getName().equals("doPut"))
+            }
+            if (m.getName().equals("doPut")) {
                 ALLOW_PUT = true;
-            if (m.getName().equals("doDelete"))
+            }
+            if (m.getName().equals("doDelete")) {
                 ALLOW_DELETE = true;
+            }
         }
 
         String allow = null;
-        if (ALLOW_GET)
+        if (ALLOW_GET) {
             allow=METHOD_GET;
-        if (ALLOW_HEAD)
-            if (allow==null) allow=METHOD_HEAD;
-            else allow += ", " + METHOD_HEAD;
-        if (ALLOW_POST)
-            if (allow==null) allow=METHOD_POST;
-            else allow += ", " + METHOD_POST;
-        if (ALLOW_PUT)
-            if (allow==null) allow=METHOD_PUT;
-            else allow += ", " + METHOD_PUT;
-        if (ALLOW_DELETE)
-            if (allow==null) allow=METHOD_DELETE;
-            else allow += ", " + METHOD_DELETE;
-        if (ALLOW_TRACE)
-            if (allow==null) allow=METHOD_TRACE;
-            else allow += ", " + METHOD_TRACE;
-        if (ALLOW_OPTIONS)
-            if (allow==null) allow=METHOD_OPTIONS;
-            else allow += ", " + METHOD_OPTIONS;
+        }
+        if (ALLOW_HEAD) {
+            if (allow==null) {
+                allow=METHOD_HEAD;
+            } else {
+                allow += ", " + METHOD_HEAD;
+            }
+        }
+        if (ALLOW_POST) {
+            if (allow==null) {
+                allow=METHOD_POST;
+            } else {
+                allow += ", " + METHOD_POST;
+            }
+        }
+        if (ALLOW_PUT) {
+            if (allow==null) {
+                allow=METHOD_PUT;
+            } else {
+                allow += ", " + METHOD_PUT;
+            }
+        }
+        if (ALLOW_DELETE) {
+            if (allow==null) {
+                allow=METHOD_DELETE;
+            } else {
+                allow += ", " + METHOD_DELETE;
+            }
+        }
+        if (ALLOW_TRACE) {
+            if (allow==null) {
+                allow=METHOD_TRACE;
+            } else {
+                allow += ", " + METHOD_TRACE;
+            }
+        }
+        if (ALLOW_OPTIONS) {
+            if (allow==null) {
+                allow=METHOD_OPTIONS;
+            } else {
+                allow += ", " + METHOD_OPTIONS;
+            }
+        }
 
         resp.setHeader("Allow", allow);
     }
@@ -573,8 +594,8 @@ public abstract class HttpServlet extends GenericServlet {
         int responseLength;
 
         String CRLF = "\r\n";
-        StringBuilder buffer = new StringBuilder("TRACE ").append(req.getRequestURI())
-            .append(" ").append(req.getProtocol());
+        StringBuilder buffer =
+                new StringBuilder("TRACE ").append(req.getRequestURI()).append(" ").append(req.getProtocol());
 
         Enumeration<String> reqHeaderEnum = req.getHeaderNames();
 
@@ -593,7 +614,6 @@ public abstract class HttpServlet extends GenericServlet {
         ServletOutputStream out = resp.getOutputStream();
         out.print(buffer.toString());
         out.close();
-        return;
     }
 
 
@@ -697,10 +717,12 @@ public abstract class HttpServlet extends GenericServlet {
      */
     private void maybeSetLastModified(HttpServletResponse resp,
                                       long lastModified) {
-        if (resp.containsHeader(HEADER_LASTMOD))
+        if (resp.containsHeader(HEADER_LASTMOD)) {
             return;
-        if (lastModified >= 0)
+        }
+        if (lastModified >= 0) {
             resp.setDateHeader(HEADER_LASTMOD, lastModified);
+        }
     }
 
 
@@ -737,162 +759,391 @@ public abstract class HttpServlet extends GenericServlet {
             request = (HttpServletRequest) req;
             response = (HttpServletResponse) res;
         } catch (ClassCastException e) {
-            throw new ServletException("non-HTTP request or response");
+            throw new ServletException(lStrings.getString("http.non_http"));
         }
         service(request, response);
     }
-}
 
 
-/*
- * A response wrapper for use in (dumb) "HEAD" support.
- * This just swallows that body, counting the bytes in order to set
- * the content length appropriately.  All other methods delegate to the
- * wrapped HTTP Servlet Response object.
- */
-// file private
-class NoBodyResponse extends HttpServletResponseWrapper {
-    private final NoBodyOutputStream noBody;
-    private PrintWriter writer;
-    private boolean didSetContentLength;
+    /*
+     * A response wrapper for use in (dumb) "HEAD" support.
+     * This just swallows that body, counting the bytes in order to set
+     * the content length appropriately.  All other methods delegate to the
+     * wrapped HTTP Servlet Response object.
+     */
+    private static class NoBodyResponse extends HttpServletResponseWrapper {
+        private final NoBodyOutputStream noBodyOutputStream;
+        private ServletOutputStream originalOutputStream;
+        private NoBodyPrintWriter noBodyWriter;
+        private boolean didSetContentLength;
 
-    // file private
-    NoBodyResponse(HttpServletResponse r) {
-        super(r);
-        noBody = new NoBodyOutputStream();
-    }
-
-    // file private
-    void setContentLength() {
-        if (!didSetContentLength) {
-            if (writer != null) {
-                writer.flush();
-            }
-            super.setContentLength(noBody.getContentLength());
+        private NoBodyResponse(HttpServletResponse r) {
+            super(r);
+            noBodyOutputStream = new NoBodyOutputStream(this);
         }
-    }
+
+        private void setContentLength() {
+            if (!didSetContentLength) {
+                if (noBodyWriter != null) {
+                    noBodyWriter.flush();
+                }
+                super.setContentLengthLong(noBodyOutputStream.getWrittenByteCount());
+            }
+        }
 
 
-    // SERVLET RESPONSE interface methods
-
-    @Override
-    public void setContentLength(int len) {
-        super.setContentLength(len);
-        didSetContentLength = true;
-    }
-
-    @Override
-    public void setContentLengthLong(long len) {
-        super.setContentLengthLong(len);
-        didSetContentLength = true;
-    }
-
-    @Override
-    public void setHeader(String name, String value) {
-        super.setHeader(name, value);
-        checkHeader(name);
-    }
-
-    @Override
-    public void addHeader(String name, String value) {
-        super.addHeader(name, value);
-        checkHeader(name);
-    }
-
-    @Override
-    public void setIntHeader(String name, int value) {
-        super.setIntHeader(name, value);
-        checkHeader(name);
-    }
-
-    @Override
-    public void addIntHeader(String name, int value) {
-        super.addIntHeader(name, value);
-        checkHeader(name);
-    }
-
-    private void checkHeader(String name) {
-        if ("content-length".equalsIgnoreCase(name)) {
+        @Override
+        public void setContentLength(int len) {
+            super.setContentLength(len);
             didSetContentLength = true;
         }
-    }
 
-    @Override
-    public ServletOutputStream getOutputStream() throws IOException {
-        return noBody;
-    }
-
-    @Override
-    public PrintWriter getWriter() throws UnsupportedEncodingException {
-
-        if (writer == null) {
-            OutputStreamWriter w;
-
-            w = new OutputStreamWriter(noBody, getCharacterEncoding());
-            writer = new PrintWriter(w);
-        }
-        return writer;
-    }
-}
-
-
-/*
- * Servlet output stream that gobbles up all its data.
- */
-
-// file private
-class NoBodyOutputStream extends ServletOutputStream {
-
-    private static final String LSTRING_FILE =
-        "javax.servlet.http.LocalStrings";
-    private static final ResourceBundle lStrings =
-        ResourceBundle.getBundle(LSTRING_FILE);
-
-    private int contentLength = 0;
-
-    // file private
-    NoBodyOutputStream() {
-        // NOOP
-    }
-
-    // file private
-    int getContentLength() {
-        return contentLength;
-    }
-
-    @Override
-    public void write(int b) {
-        contentLength++;
-    }
-
-    @Override
-    public void write(byte buf[], int offset, int len) throws IOException {
-        if (buf == null) {
-            throw new NullPointerException(
-                    lStrings.getString("err.io.nullArray"));
+        @Override
+        public void setContentLengthLong(long len) {
+            super.setContentLengthLong(len);
+            didSetContentLength = true;
         }
 
-        if (offset < 0 || len < 0 || offset+len > buf.length) {
-            String msg = lStrings.getString("err.io.indexOutOfBounds");
-            Object[] msgArgs = new Object[3];
-            msgArgs[0] = Integer.valueOf(offset);
-            msgArgs[1] = Integer.valueOf(len);
-            msgArgs[2] = Integer.valueOf(buf.length);
-            msg = MessageFormat.format(msg, msgArgs);
-            throw new IndexOutOfBoundsException(msg);
+        @Override
+        public void setHeader(String name, String value) {
+            super.setHeader(name, value);
+            checkHeader(name);
         }
 
-        contentLength += len;
+        @Override
+        public void addHeader(String name, String value) {
+            super.addHeader(name, value);
+            checkHeader(name);
+        }
+
+        @Override
+        public void setIntHeader(String name, int value) {
+            super.setIntHeader(name, value);
+            checkHeader(name);
+        }
+
+        @Override
+        public void addIntHeader(String name, int value) {
+            super.addIntHeader(name, value);
+            checkHeader(name);
+        }
+
+        private void checkHeader(String name) {
+            if ("content-length".equalsIgnoreCase(name)) {
+                didSetContentLength = true;
+            }
+        }
+
+        @Override
+        public ServletOutputStream getOutputStream() throws IOException {
+            originalOutputStream = getResponse().getOutputStream();
+            return noBodyOutputStream;
+        }
+
+        @Override
+        public PrintWriter getWriter() throws UnsupportedEncodingException {
+
+            if (noBodyWriter == null) {
+                noBodyWriter = new NoBodyPrintWriter(noBodyOutputStream, getCharacterEncoding());
+            }
+            return noBodyWriter;
+        }
+
+        @Override
+        public void reset() {
+            super.reset();
+            resetBuffer();
+            originalOutputStream = null;
+        }
+
+        @Override
+        public void resetBuffer() {
+            noBodyOutputStream.resetBuffer();
+            if (noBodyWriter != null) {
+                noBodyWriter.resetBuffer();
+            }
+        }
     }
 
-    @Override
-    public boolean isReady() {
-        // TODO SERVLET 3.1
-        return false;
+
+    /*
+     * Servlet output stream that gobbles up all its data.
+     */
+    private static class NoBodyOutputStream extends ServletOutputStream {
+
+        private static final String LSTRING_FILE = "javax.servlet.http.LocalStrings";
+        private static final ResourceBundle lStrings = ResourceBundle.getBundle(LSTRING_FILE);
+
+        private final NoBodyResponse response;
+        private boolean flushed = false;
+        private long writtenByteCount = 0;
+
+        private NoBodyOutputStream(NoBodyResponse response) {
+            this.response = response;
+        }
+
+        private long getWrittenByteCount() {
+            return writtenByteCount;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            writtenByteCount++;
+            checkCommit();
+        }
+
+        @Override
+        public void write(byte buf[], int offset, int len) throws IOException {
+            if (buf == null) {
+                throw new NullPointerException(
+                        lStrings.getString("err.io.nullArray"));
+            }
+
+            if (offset < 0 || len < 0 || offset+len > buf.length) {
+                String msg = lStrings.getString("err.io.indexOutOfBounds");
+                Object[] msgArgs = new Object[3];
+                msgArgs[0] = Integer.valueOf(offset);
+                msgArgs[1] = Integer.valueOf(len);
+                msgArgs[2] = Integer.valueOf(buf.length);
+                msg = MessageFormat.format(msg, msgArgs);
+                throw new IndexOutOfBoundsException(msg);
+            }
+
+            writtenByteCount += len;
+            checkCommit();
+        }
+
+        @Override
+        public boolean isReady() {
+            // Will always be ready as data is swallowed.
+            return true;
+        }
+
+        @Override
+        public void setWriteListener(WriteListener listener) {
+            response.originalOutputStream.setWriteListener(listener);
+        }
+
+        private void checkCommit() throws IOException {
+            if (!flushed && writtenByteCount > response.getBufferSize()) {
+                response.flushBuffer();
+                flushed = true;
+            }
+        }
+
+        private void resetBuffer() {
+            if (flushed) {
+                throw new IllegalStateException(lStrings.getString("err.state.commit"));
+            }
+            writtenByteCount = 0;
+        }
     }
 
-    @Override
-    public void setWriteListener(javax.servlet.WriteListener listener) {
-        // TODO SERVLET 3.1
+
+    /*
+     * On reset() and resetBuffer() need to clear the data buffered in the
+     * OutputStreamWriter. No easy way to do that so NoBodyPrintWriter wraps a
+     * PrintWriter than can be thrown away on reset()/resetBuffer() and a new
+     * one constructed while the application retains a reference to the
+     * NoBodyPrintWriter instance.
+     */
+    private static class NoBodyPrintWriter extends PrintWriter {
+
+        private final NoBodyOutputStream out;
+        private final String encoding;
+        private PrintWriter pw;
+
+        public NoBodyPrintWriter(NoBodyOutputStream out, String encoding) throws UnsupportedEncodingException {
+            super(out);
+            this.out = out;
+            this.encoding = encoding;
+
+            Writer osw = new OutputStreamWriter(out, encoding);
+            pw = new PrintWriter(osw);
+        }
+
+        private void resetBuffer() {
+            out.resetBuffer();
+
+            Writer osw = null;
+            try {
+                osw = new OutputStreamWriter(out, encoding);
+            } catch (UnsupportedEncodingException e) {
+                // Impossible.
+                // The same values were used in the constructor. If this method
+                // gets called then the constructor must have succeeded so the
+                // above call must also succeed.
+            }
+            pw = new PrintWriter(osw);
+        }
+
+        @Override
+        public void flush() {
+            pw.flush();
+        }
+
+        @Override
+        public void close() {
+            pw.close();
+        }
+
+        @Override
+        public boolean checkError() {
+            return pw.checkError();
+        }
+
+        @Override
+        public void write(int c) {
+            pw.write(c);
+        }
+
+        @Override
+        public void write(char[] buf, int off, int len) {
+            pw.write(buf, off, len);
+        }
+
+        @Override
+        public void write(char[] buf) {
+            pw.write(buf);
+        }
+
+        @Override
+        public void write(String s, int off, int len) {
+            pw.write(s, off, len);
+        }
+
+        @Override
+        public void write(String s) {
+            pw.write(s);
+        }
+
+        @Override
+        public void print(boolean b) {
+            pw.print(b);
+        }
+
+        @Override
+        public void print(char c) {
+            pw.print(c);
+        }
+
+        @Override
+        public void print(int i) {
+            pw.print(i);
+        }
+
+        @Override
+        public void print(long l) {
+            pw.print(l);
+        }
+
+        @Override
+        public void print(float f) {
+            pw.print(f);
+        }
+
+        @Override
+        public void print(double d) {
+            pw.print(d);
+        }
+
+        @Override
+        public void print(char[] s) {
+            pw.print(s);
+        }
+
+        @Override
+        public void print(String s) {
+            pw.print(s);
+        }
+
+        @Override
+        public void print(Object obj) {
+            pw.print(obj);
+        }
+
+        @Override
+        public void println() {
+            pw.println();
+        }
+
+        @Override
+        public void println(boolean x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(char x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(int x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(long x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(float x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(double x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(char[] x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(String x) {
+            pw.println(x);
+        }
+
+        @Override
+        public void println(Object x) {
+            pw.println(x);
+        }
+    }
+
+
+    /*
+     * Calls NoBodyResponse.setContentLength() once the async request is
+     * complete.
+     */
+    private static class NoBodyAsyncContextListener implements AsyncListener {
+
+        private final NoBodyResponse noBodyResponse;
+
+        public NoBodyAsyncContextListener(NoBodyResponse noBodyResponse) {
+            this.noBodyResponse = noBodyResponse;
+        }
+
+        @Override
+        public void onComplete(AsyncEvent event) throws IOException {
+            noBodyResponse.setContentLength();
+        }
+
+        @Override
+        public void onTimeout(AsyncEvent event) throws IOException {
+            // NO-OP
+        }
+
+        @Override
+        public void onError(AsyncEvent event) throws IOException {
+            // NO-OP
+        }
+
+        @Override
+        public void onStartAsync(AsyncEvent event) throws IOException {
+            // NO-OP
+        }
     }
 }

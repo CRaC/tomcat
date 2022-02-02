@@ -62,10 +62,10 @@ import org.apache.tomcat.util.res.StringManager;
 public final class StandardServer extends LifecycleMBeanBase implements Server {
 
     private static final Log log = LogFactory.getLog(StandardServer.class);
+    private static final StringManager sm = StringManager.getManager(StandardServer.class);
 
 
     // ------------------------------------------------------------ Constructor
-
 
     /**
      * Construct a default instance of this class.
@@ -140,13 +140,6 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
 
 
     /**
-     * The string manager for this package.
-     */
-    private static final StringManager sm =
-        StringManager.getManager(Constants.Package);
-
-
-    /**
      * The property change support for this component.
      */
     final PropertyChangeSupport support = new PropertyChangeSupport(this);
@@ -187,9 +180,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public javax.naming.Context getGlobalNamingContext() {
-
-        return (this.globalNamingContext);
-
+        return this.globalNamingContext;
     }
 
 
@@ -198,11 +189,8 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      *
      * @param globalNamingContext The new global naming resource context
      */
-    public void setGlobalNamingContext
-        (javax.naming.Context globalNamingContext) {
-
+    public void setGlobalNamingContext(javax.naming.Context globalNamingContext) {
         this.globalNamingContext = globalNamingContext;
-
     }
 
 
@@ -211,9 +199,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public NamingResourcesImpl getGlobalNamingResources() {
-
-        return (this.globalNamingResources);
-
+        return this.globalNamingResources;
     }
 
 
@@ -269,9 +255,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public int getPort() {
-
-        return (this.port);
-
+        return this.port;
     }
 
 
@@ -282,9 +266,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public void setPort(int port) {
-
         this.port = port;
-
     }
 
 
@@ -293,9 +275,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public String getAddress() {
-
-        return (this.address);
-
+        return this.address;
     }
 
 
@@ -306,9 +286,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public void setAddress(String address) {
-
         this.address = address;
-
     }
 
     /**
@@ -316,9 +294,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public String getShutdown() {
-
-        return (this.shutdown);
-
+        return this.shutdown;
     }
 
 
@@ -329,9 +305,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public void setShutdown(String shutdown) {
-
         this.shutdown = shutdown;
-
     }
 
 
@@ -415,11 +389,11 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
     @Override
     public void await() {
         // Negative values - don't wait on port - tomcat is embedded or we just don't like ports
-        if( port == -2 ) {
+        if (port == -2) {
             // undocumented yet - for embedding apps that are around, alive.
             return;
         }
-        if( port==-1 ) {
+        if (port==-1) {
             try {
                 awaitThread = Thread.currentThread();
                 while(!stopAwait) {
@@ -473,23 +447,23 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                                 Long.valueOf(System.currentTimeMillis() - acceptStartTime)), ste);
                         continue;
                     } catch (AccessControlException ace) {
-                        log.warn("StandardServer.accept security exception: "
-                                + ace.getMessage(), ace);
+                        log.warn(sm.getString("standardServer.accept.security"), ace);
                         continue;
                     } catch (IOException e) {
                         if (stopAwait) {
                             // Wait was aborted with socket.close()
                             break;
                         }
-                        log.error("StandardServer.await: accept: ", e);
+                        log.error(sm.getString("standardServer.accept.error"), e);
                         break;
                     }
 
                     // Read a set of characters from the socket
                     int expected = 1024; // Cut off to avoid DoS attack
                     while (expected < shutdown.length()) {
-                        if (random == null)
+                        if (random == null) {
                             random = new Random();
+                        }
                         expected += (random.nextInt() % 1024);
                     }
                     while (expected > 0) {
@@ -497,7 +471,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                         try {
                             ch = stream.read();
                         } catch (IOException e) {
-                            log.warn("StandardServer.await: read: ", e);
+                            log.warn(sm.getString("standardServer.accept.readError"), e);
                             ch = -1;
                         }
                         // Control character or EOF (-1) terminates loop
@@ -523,9 +497,9 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                 if (match) {
                     log.info(sm.getString("standardServer.shutdownViaPort"));
                     break;
-                } else
-                    log.warn("StandardServer.await: Invalid command '"
-                            + command.toString() + "' received");
+                } else {
+                    log.warn(sm.getString("standardServer.invalidShutdownCommand", command.toString()));
+                }
             }
         } finally {
             ServerSocket serverSocket = awaitSocket;
@@ -552,19 +526,17 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public Service findService(String name) {
-
         if (name == null) {
-            return (null);
+            return null;
         }
         synchronized (servicesLock) {
-            for (int i = 0; i < services.length; i++) {
-                if (name.equals(services[i].getName())) {
-                    return (services[i]);
+            for (Service service : services) {
+                if (name.equals(service.getName())) {
+                    return service;
                 }
             }
         }
-        return (null);
-
+        return null;
     }
 
 
@@ -573,9 +545,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public Service[] findServices() {
-
         return services;
-
     }
 
     /**
@@ -607,8 +577,9 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                     break;
                 }
             }
-            if (j < 0)
+            if (j < 0) {
                 return;
+            }
             try {
                 services[j].stop();
             } catch (LifecycleException e) {
@@ -617,8 +588,9 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             int k = 0;
             Service results[] = new Service[services.length - 1];
             for (int i = 0; i < services.length; i++) {
-                if (i != j)
+                if (i != j) {
                     results[k++] = services[i];
+                }
             }
             services = results;
 
@@ -689,12 +661,10 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("StandardServer[");
         sb.append(getPort());
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -721,7 +691,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             }
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
-            log.error(t);
+            log.error(sm.getString("standardServer.storeConfig.error"), t);
         }
     }
 
@@ -752,7 +722,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             }
         } catch (Throwable t) {
             ExceptionUtils.handleThrowable(t);
-            log.error(t);
+            log.error(sm.getString("standardServer.storeConfig.contextError", context.getName()), t);
         }
     }
 
@@ -789,8 +759,8 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
 
         // Start our defined Services
         synchronized (servicesLock) {
-            for (int i = 0; i < services.length; i++) {
-                services[i].start();
+            for (Service service : services) {
+                service.start();
             }
         }
     }
@@ -810,8 +780,8 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
         fireLifecycleEvent(CONFIGURE_STOP_EVENT, null);
 
         // Stop our defined Services
-        for (int i = 0; i < services.length; i++) {
-            services[i].stop();
+        for (Service service : services) {
+            service.stop();
         }
 
         globalNamingResources.stop();
@@ -859,9 +829,7 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
                                         f.getName().endsWith(".jar")) {
                                     ExtensionValidator.addSystemResource(f);
                                 }
-                            } catch (URISyntaxException e) {
-                                // Ignore
-                            } catch (IOException e) {
+                            } catch (URISyntaxException | IOException e) {
                                 // Ignore
                             }
                         }
@@ -871,16 +839,16 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
             }
         }
         // Initialize our defined Services
-        for (int i = 0; i < services.length; i++) {
-            services[i].init();
+        for (Service service : services) {
+            service.init();
         }
     }
 
     @Override
     protected void destroyInternal() throws LifecycleException {
         // Destroy our defined Services
-        for (int i = 0; i < services.length; i++) {
-            services[i].destroy();
+        for (Service service : services) {
+            service.destroy();
         }
 
         globalNamingResources.destroy();
@@ -897,12 +865,13 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
      */
     @Override
     public ClassLoader getParentClassLoader() {
-        if (parentClassLoader != null)
-            return (parentClassLoader);
-        if (catalina != null) {
-            return (catalina.getParentClassLoader());
+        if (parentClassLoader != null) {
+            return parentClassLoader;
         }
-        return (ClassLoader.getSystemClassLoader());
+        if (catalina != null) {
+            return catalina.getParentClassLoader();
+        }
+        return ClassLoader.getSystemClassLoader();
     }
 
     /**
@@ -950,5 +919,4 @@ public final class StandardServer extends LifecycleMBeanBase implements Server {
     protected final String getObjectNameKeyProperties() {
         return "type=Server";
     }
-
 }

@@ -14,8 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.catalina.util;
 
 
@@ -55,7 +53,7 @@ public final class Extension {
 
 
     public String getExtensionName() {
-        return (this.extensionName);
+        return this.extensionName;
     }
 
     public void setExtensionName(String extensionName) {
@@ -69,7 +67,7 @@ public final class Extension {
     private String implementationURL = null;
 
     public String getImplementationURL() {
-        return (this.implementationURL);
+        return this.implementationURL;
     }
 
     public void setImplementationURL(String implementationURL) {
@@ -84,7 +82,7 @@ public final class Extension {
     private String implementationVendor = null;
 
     public String getImplementationVendor() {
-        return (this.implementationVendor);
+        return this.implementationVendor;
     }
 
     public void setImplementationVendor(String implementationVendor) {
@@ -99,7 +97,7 @@ public final class Extension {
     private String implementationVendorId = null;
 
     public String getImplementationVendorId() {
-        return (this.implementationVendorId);
+        return this.implementationVendorId;
     }
 
     public void setImplementationVendorId(String implementationVendorId) {
@@ -114,7 +112,7 @@ public final class Extension {
     private String implementationVersion = null;
 
     public String getImplementationVersion() {
-        return (this.implementationVersion);
+        return this.implementationVersion;
     }
 
     public void setImplementationVersion(String implementationVersion) {
@@ -129,7 +127,7 @@ public final class Extension {
     private String specificationVendor = null;
 
     public String getSpecificationVendor() {
-        return (this.specificationVendor);
+        return this.specificationVendor;
     }
 
     public void setSpecificationVendor(String specificationVendor) {
@@ -144,7 +142,7 @@ public final class Extension {
     private String specificationVersion = null;
 
     public String getSpecificationVersion() {
-        return (this.specificationVersion);
+        return this.specificationVersion;
     }
 
     public void setSpecificationVersion(String specificationVersion) {
@@ -181,32 +179,38 @@ public final class Extension {
     public boolean isCompatibleWith(Extension required) {
 
         // Extension Name must match
-        if (extensionName == null)
+        if (extensionName == null) {
             return false;
-        if (!extensionName.equals(required.getExtensionName()))
+        }
+        if (!extensionName.equals(required.getExtensionName())) {
             return false;
+        }
 
         // If specified, available specification version must be >= required
         if (required.getSpecificationVersion() != null) {
             if (!isNewer(specificationVersion,
-                         required.getSpecificationVersion()))
+                         required.getSpecificationVersion())) {
                 return false;
+            }
         }
 
         // If specified, Implementation Vendor ID must match
         if (required.getImplementationVendorId() != null) {
-            if (implementationVendorId == null)
+            if (implementationVendorId == null) {
                 return false;
+            }
             if (!implementationVendorId.equals(required
-                    .getImplementationVendorId()))
+                    .getImplementationVendorId())) {
                 return false;
+            }
         }
 
         // If specified, Implementation version must be >= required
         if (required.getImplementationVersion() != null) {
             if (!isNewer(implementationVersion,
-                         required.getImplementationVersion()))
+                         required.getImplementationVersion())) {
                 return false;
+            }
         }
 
         // This available optional package satisfies the requirements
@@ -216,7 +220,6 @@ public final class Extension {
 
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("Extension[");
         sb.append(extensionName);
         if (implementationURL != null) {
@@ -243,9 +246,8 @@ public final class Extension {
             sb.append(", specificationVersion=");
             sb.append(specificationVersion);
         }
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 
@@ -265,32 +267,39 @@ public final class Extension {
     private boolean isNewer(String first, String second)
         throws NumberFormatException {
 
-        if ((first == null) || (second == null))
+        if ((first == null) || (second == null)) {
             return false;
-        if (first.equals(second))
+        }
+        if (first.equals(second)) {
             return true;
+        }
 
         StringTokenizer fTok = new StringTokenizer(first, ".", true);
         StringTokenizer sTok = new StringTokenizer(second, ".", true);
         int fVersion = 0;
         int sVersion = 0;
         while (fTok.hasMoreTokens() || sTok.hasMoreTokens()) {
-            if (fTok.hasMoreTokens())
+            if (fTok.hasMoreTokens()) {
                 fVersion = Integer.parseInt(fTok.nextToken());
-            else
+            } else {
                 fVersion = 0;
-            if (sTok.hasMoreTokens())
+            }
+            if (sTok.hasMoreTokens()) {
                 sVersion = Integer.parseInt(sTok.nextToken());
-            else
+            } else {
                 sVersion = 0;
-            if (fVersion < sVersion)
+            }
+            if (fVersion < sVersion) {
                 return false;
-            else if (fVersion > sVersion)
+            } else if (fVersion > sVersion) {
                 return true;
-            if (fTok.hasMoreTokens())   // Swallow the periods
+            }
+            if (fTok.hasMoreTokens()) {
                 fTok.nextToken();
-            if (sTok.hasMoreTokens())
+            }
+            if (sTok.hasMoreTokens()) {
                 sTok.nextToken();
+            }
         }
 
         return true;  // Exact match

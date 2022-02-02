@@ -39,7 +39,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -52,6 +51,7 @@ import org.apache.catalina.startup.Tomcat;
 import org.apache.catalina.startup.TomcatBaseTest;
 import org.apache.tomcat.unittest.TesterRequest;
 import org.apache.tomcat.util.buf.ByteChunk;
+import org.apache.tomcat.util.buf.EncodedSolidusHandling;
 import org.apache.tomcat.util.descriptor.web.FilterDef;
 import org.apache.tomcat.util.descriptor.web.FilterMap;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
@@ -60,12 +60,6 @@ import org.apache.tomcat.util.descriptor.web.LoginConfig;
  * Test case for {@link Request}.
  */
 public class TestRequest extends TomcatBaseTest {
-
-    @BeforeClass
-    public static void setup() {
-        // Some of these tests need this and it used statically so set it once
-        System.setProperty("org.apache.tomcat.util.buf.UDecoder.ALLOW_ENCODED_SLASH", "true");
-    }
 
     /**
      * Test case for https://bz.apache.org/bugzilla/show_bug.cgi?id=37794
@@ -170,7 +164,9 @@ public class TestRequest extends TomcatBaseTest {
         }
 
         private synchronized void init() throws Exception {
-            if (init) return;
+            if (init) {
+              return;
+            }
 
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
@@ -349,17 +345,21 @@ public class TestRequest extends TomcatBaseTest {
 
             req.login(USER, PWD);
 
-            if (!req.getRemoteUser().equals(USER))
-                throw new ServletException();
-            if (!req.getUserPrincipal().getName().equals(USER))
-                throw new ServletException();
+            if (!req.getRemoteUser().equals(USER)) {
+              throw new ServletException();
+            }
+            if (!req.getUserPrincipal().getName().equals(USER)) {
+              throw new ServletException();
+            }
 
             req.logout();
 
-            if (req.getRemoteUser() != null)
-                throw new ServletException();
-            if (req.getUserPrincipal() != null)
-                throw new ServletException();
+            if (req.getRemoteUser() != null) {
+              throw new ServletException();
+            }
+            if (req.getUserPrincipal() != null) {
+              throw new ServletException();
+            }
 
             resp.getWriter().write(OK);
         }
@@ -530,14 +530,14 @@ public class TestRequest extends TomcatBaseTest {
 
                 java.util.Arrays.sort(values);
 
-                for(int i=0; i<values.length; ++i)
-                {
-                    if(first)
-                        first = false;
-                    else
-                        out.print(",");
+                for (String value : values) {
+                    if (first) {
+                      first = false;
+                    } else {
+                      out.print(",");
+                    }
 
-                    out.print(name + "=" + values[i]);
+                    out.print(name + "=" + value);
                 }
             }
         }
@@ -551,7 +551,9 @@ public class TestRequest extends TomcatBaseTest {
         private boolean init;
 
         private synchronized void init() throws Exception {
-            if (init) return;
+            if (init) {
+              return;
+            }
 
             Tomcat tomcat = getTomcatInstance();
             Context root = tomcat.addContext("", TEMP_DIR);
@@ -573,17 +575,20 @@ public class TestRequest extends TomcatBaseTest {
 
             try {
                 init();
-                if(allowBody)
-                    tomcat.getConnector().setParseBodyMethods(method);
-                else
-                    tomcat.getConnector().setParseBodyMethods(""); // never parse
+                if(allowBody) {
+                  tomcat.getConnector().setParseBodyMethods(method);
+                }
+                else {
+                  tomcat.getConnector().setParseBodyMethods(""); // never parse
+                }
 
                 // Open connection
                 connect();
 
                 // Re-encode the request body so that bytes = characters
-                if(null != requestBody)
-                    requestBody = new String(requestBody.getBytes("UTF-8"), "ASCII");
+                if(null != requestBody) {
+                  requestBody = new String(requestBody.getBytes("UTF-8"), "ASCII");
+                }
 
                 // Send specified request body using method
                 String[] request = {
@@ -801,12 +806,12 @@ public class TestRequest extends TomcatBaseTest {
 
     @Test
     public void testBug57215c() throws Exception {
-        doBug56501("/path", "/%2Fpath", "/%2Fpath");
+        doBug56501("/path", "/%2Fpath", "/%2Fpath", EncodedSolidusHandling.DECODE);
     }
 
     @Test
     public void testBug57215d() throws Exception {
-        doBug56501("/path", "/%2Fpath%2F", "/%2Fpath");
+        doBug56501("/path", "/%2Fpath%2F", "/%2Fpath", EncodedSolidusHandling.DECODE);
     }
 
     @Test
@@ -816,14 +821,21 @@ public class TestRequest extends TomcatBaseTest {
 
     @Test
     public void testBug57215f() throws Exception {
-        doBug56501("/path", "/foo/..%2fpath", "/foo/..%2fpath");
+        doBug56501("/path", "/foo/..%2fpath", "/foo/..%2fpath", EncodedSolidusHandling.DECODE);
     }
 
-    private void doBug56501(String deployPath, String requestPath, String expected)
-            throws Exception {
+    private void doBug56501(String deployPath, String requestPath, String expected) throws Exception {
+        doBug56501(deployPath, requestPath, expected, EncodedSolidusHandling.REJECT);
+    }
+
+
+    private void doBug56501(String deployPath, String requestPath, String expected,
+            EncodedSolidusHandling encodedSolidusHandling) throws Exception {
 
         // Setup Tomcat instance
         Tomcat tomcat = getTomcatInstance();
+
+        tomcat.getConnector().setEncodedSolidusHandling(encodedSolidusHandling.getValue());
 
         // No file system docBase required
         Context ctx = tomcat.addContext(deployPath, null);
@@ -918,7 +930,7 @@ public class TestRequest extends TomcatBaseTest {
     }
 
 
-    private void doTestGetReader(String userAgentCharaceterEncoding, boolean expect200)
+    private void doTestGetReader(String userAgentCharacterEncoding, boolean expect200)
             throws Exception {
 
         // Setup Tomcat instance
@@ -936,7 +948,7 @@ public class TestRequest extends TomcatBaseTest {
         ByteChunk bc = new ByteChunk();
         Map<String,List<String>> reqHeaders = new HashMap<>();
         reqHeaders.put("Content-Type",
-                Arrays.asList(new String[] {"text/plain;charset=" + userAgentCharaceterEncoding}));
+                Arrays.asList(new String[] {"text/plain;charset=" + userAgentCharacterEncoding}));
 
         int rc = postUrl(body, "http://localhost:" + getPort() + "/", bc, reqHeaders, null);
 

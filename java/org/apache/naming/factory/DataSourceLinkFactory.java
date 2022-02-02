@@ -14,11 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
 package org.apache.naming.factory;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -70,10 +67,10 @@ public class DataSourceLinkFactory extends ResourceLinkFactory {
 
     protected Object wrapDataSource(Object datasource, String username, String password) throws NamingException {
         try {
-            Class<?> proxyClass = Proxy.getProxyClass(datasource.getClass().getClassLoader(), datasource.getClass().getInterfaces());
-            Constructor<?> proxyConstructor = proxyClass.getConstructor(new Class[] { InvocationHandler.class });
-            DataSourceHandler handler = new DataSourceHandler((DataSource)datasource, username, password);
-            return proxyConstructor.newInstance(handler);
+            DataSourceHandler handler =
+                    new DataSourceHandler((DataSource)datasource, username, password);
+            return Proxy.newProxyInstance(datasource.getClass().getClassLoader(),
+                    datasource.getClass().getInterfaces(), handler);
         }catch (Exception x) {
             if (x instanceof InvocationTargetException) {
                 Throwable cause = x.getCause();
@@ -87,8 +84,9 @@ public class DataSourceLinkFactory extends ResourceLinkFactory {
                     x = (Exception) cause;
                 }
             }
-            if (x instanceof NamingException) throw (NamingException)x;
-            else {
+            if (x instanceof NamingException) {
+                throw (NamingException)x;
+            } else {
                 NamingException nx = new NamingException(x.getMessage());
                 nx.initCause(x);
                 throw nx;
@@ -138,7 +136,7 @@ public class DataSourceLinkFactory extends ResourceLinkFactory {
             if (iface == DataSource.class) {
                 return ds;
             } else {
-                throw new SQLException("Not a wrapper of "+iface.getName());
+                throw new SQLException(sm.getString("dataSourceLinkFactory.badWrapper", iface.getName()));
             }
         }
 

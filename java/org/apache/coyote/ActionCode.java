@@ -14,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package org.apache.coyote;
 
 /**
@@ -75,6 +74,11 @@ public enum ActionCode {
      * Callback for lazy evaluation - extract the remote host address.
      */
     REQ_HOST_ADDR_ATTRIBUTE,
+
+    /**
+     * Callback for lazy evaluation - extract the connection peer address.
+     */
+    REQ_PEER_ADDR_ATTRIBUTE,
 
     /**
      * Callback for lazy evaluation - extract the SSL-related attributes
@@ -251,5 +255,17 @@ public enum ActionCode {
     /**
      * Push a request on behalf of the client of the current request.
      */
-    PUSH_REQUEST
+    PUSH_REQUEST,
+
+    /**
+     * Obtain the connection identifier for the request. Used with multiplexing
+     * protocols such as HTTP/2.
+     */
+    CONNECTION_ID,
+
+    /**
+     * Obtain the stream identifier for the request. Used with multiplexing
+     * protocols such as HTTP/2.
+     */
+    STREAM_ID
 }

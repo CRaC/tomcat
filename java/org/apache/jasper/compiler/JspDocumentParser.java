@@ -593,10 +593,11 @@ class JspDocumentParser
                             startMark = new Mark(ctxt, path, line, column);
                             break;
                         }
-                        if (ch == '"')
+                        if (ch == '"') {
                             doubleQ = !doubleQ;
-                        else if (ch == '\'')
+                        } else if (ch == '\'') {
                             singleQ = !singleQ;
+                        }
 
                         ttext.write(ch);
                         lastCh = ch;
@@ -648,7 +649,7 @@ class JspDocumentParser
 
         if (current instanceof Node.NamedAttribute) {
             boolean isTrim = ((Node.NamedAttribute)current).isTrim();
-            Node.Nodes subElems = ((Node.NamedAttribute)current).getBody();
+            Node.Nodes subElems = current.getBody();
             for (int i = 0; subElems != null && i < subElems.size(); i++) {
                 Node subElem = subElems.getNode(i);
                 if (!(subElem instanceof Node.TemplateText)) {
@@ -735,8 +736,7 @@ class JspDocumentParser
             startMark = new Mark(ctxt, path, locator.getLineNumber(),
                     locator.getColumnNumber());
             @SuppressWarnings("unused")
-            Node unused = new Node.Comment(
-                    new String(buf, offset, len), startMark, current);
+            Node unused = new Node.Comment(new String(buf, offset, len), startMark, current);
         }
     }
 
@@ -1352,10 +1352,12 @@ class JspDocumentParser
                 Node n = body.getNode(i);
                 if (!(n instanceof Node.TemplateText)) {
                     String elemType = SCRIPTLET_ACTION;
-                    if (scriptingElem instanceof Node.Declaration)
+                    if (scriptingElem instanceof Node.Declaration) {
                         elemType = DECLARATION_ACTION;
-                    if (scriptingElem instanceof Node.Expression)
+                    }
+                    if (scriptingElem instanceof Node.Expression) {
                         elemType = EXPRESSION_ACTION;
+                    }
                     String msg =
                         Localizer.getMessage(
                             "jsp.error.parse.xml.scripting.invalid.body",

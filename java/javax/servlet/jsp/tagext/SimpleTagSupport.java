@@ -30,7 +30,7 @@ import javax.servlet.jsp.JspException;
  * convenience methods including getter methods for the properties in
  * SimpleTag.
  *
- * @since 2.0
+ * @since JSP 2.0
  */
 public class SimpleTagSupport implements SimpleTag {
     /** Reference to the enclosing tag. */
@@ -149,8 +149,8 @@ public class SimpleTagSupport implements SimpleTag {
      *
      * <p> For every instance of TagAdapter
      * encountered while traversing the ancestors, the tag handler returned by
-     * <tt>TagAdapter.getAdaptee()</tt> - instead of the TagAdapter itself -
-     * is compared to <tt>klass</tt>. If the tag handler matches, it - and
+     * <code>TagAdapter.getAdaptee()</code> - instead of the TagAdapter itself -
+     * is compared to <code>klass</code>. If the tag handler matches, it - and
      * not its TagAdapter - is returned.
      *
      * <p>
@@ -193,8 +193,7 @@ public class SimpleTagSupport implements SimpleTag {
             JspTag parent = null;
             if( from instanceof SimpleTag ) {
                 parent = ((SimpleTag)from).getParent();
-            }
-            else if( from instanceof Tag ) {
+            } else if( from instanceof Tag ) {
                 parent = ((Tag)from).getParent();
             }
             if (parent == null) {

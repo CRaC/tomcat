@@ -30,7 +30,7 @@ import org.apache.catalina.Host;
 import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.Wrapper;
-import org.apache.catalina.servlet4preview.http.MappingMatch;
+import org.apache.catalina.core.ApplicationMappingMatch;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.Ascii;
@@ -64,7 +64,7 @@ public final class Mapper {
     /**
      * Default host name.
      */
-    private String defaultHostName = null;
+    private volatile String defaultHostName = null;
     private volatile MappedHost defaultHost = null;
 
 
@@ -554,8 +554,8 @@ public final class Mapper {
                 if (removeMap(oldWrappers, newWrappers, name)) {
                     // Recalculate nesting
                     context.nesting = 0;
-                    for (int i = 0; i < newWrappers.length; i++) {
-                        int slashCount = slashCount(newWrappers[i].name);
+                    for (MappedWrapper newWrapper : newWrappers) {
+                        int slashCount = slashCount(newWrapper.name);
                         if (slashCount > context.nesting) {
                             context.nesting = slashCount;
                         }
@@ -691,12 +691,15 @@ public final class Mapper {
                     MappingData mappingData) throws IOException {
 
         if (host.isNull()) {
+            String defaultHostName = this.defaultHostName;
+            if (defaultHostName == null) {
+                return;
+            }
             host.getCharChunk().append(defaultHostName);
         }
         host.toChars();
         uri.toChars();
-        internalMap(host.getCharChunk(), uri.getCharChunk(), version,
-                mappingData);
+        internalMap(host.getCharChunk(), uri.getCharChunk(), version, mappingData);
     }
 
 
@@ -727,8 +730,10 @@ public final class Mapper {
 
     /**
      * Map the specified URI.
-     * @throws IOException
+     * @throws IOException If an error occurs while manipulating the URI during
+     *         the mapping
      */
+    @SuppressWarnings("deprecation") // contextPath
     private final void internalMap(CharChunk host, CharChunk uri,
             String version, MappingData mappingData) throws IOException {
 
@@ -1018,7 +1023,7 @@ public final class Mapper {
                     (path.getBuffer(), path.getStart(), path.getLength());
                 mappingData.wrapperPath.setChars
                     (path.getBuffer(), path.getStart(), path.getLength());
-                mappingData.matchType = MappingMatch.DEFAULT;
+                mappingData.matchType = ApplicationMappingMatch.DEFAULT;
             }
             // Redirection to a folder
             char[] buf = path.getBuffer();
@@ -1061,6 +1066,7 @@ public final class Mapper {
     /**
      * Exact mapping.
      */
+    @SuppressWarnings("deprecation") // contextPath
     private final void internalMapExactWrapper
         (MappedWrapper[] wrappers, CharChunk path, MappingData mappingData) {
         MappedWrapper wrapper = exactFind(wrappers, path);
@@ -1073,10 +1079,10 @@ public final class Mapper {
                 mappingData.wrapperPath.setString("");
                 // This seems wrong but it is what the spec says...
                 mappingData.contextPath.setString("");
-                mappingData.matchType = MappingMatch.CONTEXT_ROOT;
+                mappingData.matchType = ApplicationMappingMatch.CONTEXT_ROOT;
             } else {
                 mappingData.wrapperPath.setString(wrapper.name);
-                mappingData.matchType = MappingMatch.EXACT;
+                mappingData.matchType = ApplicationMappingMatch.EXACT;
             }
         }
     }
@@ -1128,7 +1134,7 @@ public final class Mapper {
                     (path.getBuffer(), path.getOffset(), path.getLength());
                 mappingData.wrapper = wrappers[pos].object;
                 mappingData.jspWildCard = wrappers[pos].jspWildCard;
-                mappingData.matchType = MappingMatch.PATH;
+                mappingData.matchType = ApplicationMappingMatch.PATH;
             }
         }
     }
@@ -1173,7 +1179,7 @@ public final class Mapper {
                     mappingData.requestPath.setChars(buf, servletPath, pathEnd
                             - servletPath);
                     mappingData.wrapper = wrapper.object;
-                    mappingData.matchType = MappingMatch.EXTENSION;
+                    mappingData.matchType = ApplicationMappingMatch.EXTENSION;
                 }
                 path.setOffset(servletPath);
                 path.setEnd(pathEnd);
@@ -1459,7 +1465,6 @@ public final class Mapper {
      * Find the position of the last slash in the given char chunk.
      */
     private static final int lastSlash(CharChunk name) {
-
         char[] c = name.getBuffer();
         int end = name.getEnd();
         int start = name.getStart();
@@ -1471,8 +1476,7 @@ public final class Mapper {
             }
         }
 
-        return (pos);
-
+        return pos;
     }
 
 
@@ -1480,7 +1484,6 @@ public final class Mapper {
      * Find the position of the nth slash, in the given char chunk.
      */
     private static final int nthSlash(CharChunk name, int n) {
-
         char[] c = name.getBuffer();
         int end = name.getEnd();
         int start = name.getStart();
@@ -1494,8 +1497,7 @@ public final class Mapper {
             }
         }
 
-        return (pos);
-
+        return pos;
     }
 
 

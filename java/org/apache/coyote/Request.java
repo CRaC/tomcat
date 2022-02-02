@@ -95,12 +95,12 @@ public final class Request {
 
     // remote address/host
     private final MessageBytes remoteAddrMB = MessageBytes.newInstance();
+    private final MessageBytes peerAddrMB = MessageBytes.newInstance();
     private final MessageBytes localNameMB = MessageBytes.newInstance();
     private final MessageBytes remoteHostMB = MessageBytes.newInstance();
     private final MessageBytes localAddrMB = MessageBytes.newInstance();
 
     private final MimeHeaders headers = new MimeHeaders();
-
 
     /**
      * Path parameters
@@ -154,13 +154,30 @@ public final class Request {
     private long bytesRead=0;
     // Time of the request - useful to avoid repeated calls to System.currentTime
     private long startTime = -1;
+    private long threadId = 0;
     private int available = 0;
 
     private final RequestInfo reqProcessorMX=new RequestInfo(this);
 
     private boolean sendfile = true;
 
+    /**
+     * Holds request body reading error exception.
+     */
+    private Exception errorException = null;
+
+    /*
+     * State for non-blocking output is maintained here as it is the one point
+     * easily reachable from the CoyoteInputStream and the CoyoteAdapter which
+     * both need access to state.
+     */
     volatile ReadListener listener;
+    // Ensures listener is only fired after a call is isReady()
+    private boolean fireListener = false;
+    // Tracks read registration to prevent duplicate registrations
+    private boolean registeredForRead = false;
+    // Lock used to manage concurrent access to above flags
+    private final Object nonBlockingStateLock = new Object();
 
     public ReadListener getReadListener() {
         return listener;
@@ -185,7 +202,71 @@ public final class Request {
         }
 
         this.listener = listener;
+
+        // The container is responsible for the first call to
+        // listener.onDataAvailable(). If isReady() returns true, the container
+        // needs to call listener.onDataAvailable() from a new thread. If
+        // isReady() returns false, the socket will be registered for read and
+        // the container will call listener.onDataAvailable() once data arrives.
+        // Must call isFinished() first as a call to isReady() if the request
+        // has been finished will register the socket for read interest and that
+        // is not required.
+        if (!isFinished() && isReady()) {
+            synchronized (nonBlockingStateLock) {
+                // Ensure we don't get multiple read registrations
+                registeredForRead = true;
+                // Need to set the fireListener flag otherwise when the
+                // container tries to trigger onDataAvailable, nothing will
+                // happen
+                fireListener = true;
+            }
+            action(ActionCode.DISPATCH_READ, null);
+            if (!isRequestThread()) {
+                // Not on a container thread so need to execute the dispatch
+                action(ActionCode.DISPATCH_EXECUTE, null);
+            }
+        }
     }
+
+    public boolean isReady() {
+        // Assume read is not possible
+        boolean ready = false;
+        synchronized (nonBlockingStateLock) {
+            if (registeredForRead) {
+                fireListener = true;
+                return false;
+            }
+            ready = checkRegisterForRead();
+            fireListener = !ready;
+        }
+        return ready;
+    }
+
+    private boolean checkRegisterForRead() {
+        AtomicBoolean ready = new AtomicBoolean(false);
+        synchronized (nonBlockingStateLock) {
+            if (!registeredForRead) {
+                action(ActionCode.NB_READ_INTEREST, ready);
+                registeredForRead = !ready.get();
+            }
+        }
+        return ready.get();
+    }
+
+    public void onDataAvailable() throws IOException {
+        boolean fire = false;
+        synchronized (nonBlockingStateLock) {
+            registeredForRead = false;
+            if (fireListener) {
+                fireListener = false;
+                fire = true;
+            }
+        }
+        if (fire) {
+            listener.onDataAvailable();
+        }
+    }
+
 
     private final AtomicBoolean allDataReadEventSent = new AtomicBoolean(false);
 
@@ -205,8 +286,8 @@ public final class Request {
         return urlDecoder;
     }
 
-    // -------------------- Request data --------------------
 
+    // -------------------- Request data --------------------
 
     public MessageBytes scheme() {
         return schemeMB;
@@ -255,6 +336,10 @@ public final class Request {
         return remoteAddrMB;
     }
 
+    public MessageBytes peerAddr() {
+        return peerAddrMB;
+    }
+
     public MessageBytes remoteHost() {
         return remoteHostMB;
     }
@@ -283,8 +368,8 @@ public final class Request {
         this.localPort = port;
     }
 
-    // -------------------- encoding/type --------------------
 
+    // -------------------- encoding/type --------------------
 
     /**
      * Get the character encoding used for this request.
@@ -578,11 +663,43 @@ public final class Request {
      * @throws IOException If an I/O error occurs during the copy
      */
     public int doRead(ApplicationBufferHandler handler) throws IOException {
+        if (getBytesRead() == 0 && !response.isCommitted()) {
+            action(ActionCode.ACK, ContinueResponseTiming.ON_REQUEST_BODY_READ);
+        }
+
         int n = inputBuffer.doRead(handler);
         if (n > 0) {
             bytesRead+=n;
         }
         return n;
+    }
+
+
+    // -------------------- Error tracking --------------------
+
+    /**
+     * Set the error Exception that occurred during the writing of the response
+     * processing.
+     *
+     * @param ex The exception that occurred
+     */
+    public void setErrorException(Exception ex) {
+        errorException = ex;
+    }
+
+
+    /**
+     * Get the Exception that occurred during the writing of the response.
+     *
+     * @return The exception that occurred
+     */
+    public Exception getErrorException() {
+        return errorException;
+    }
+
+
+    public boolean isExceptionPresent() {
+        return errorException != null;
     }
 
 
@@ -599,6 +716,18 @@ public final class Request {
 
     public void setStartTime(long startTime) {
         this.startTime = startTime;
+    }
+
+    public long getThreadId() {
+        return threadId;
+    }
+
+    public void setRequestThread() {
+        threadId = Thread.currentThread().getId();
+    }
+
+    public boolean isRequestThread() {
+        return Thread.currentThread().getId() == threadId;
     }
 
     // -------------------- Per-Request "notes" --------------------
@@ -649,6 +778,7 @@ public final class Request {
         localAddrMB.recycle();
         localNameMB.recycle();
         localPort = -1;
+        peerAddrMB.recycle();
         remoteAddrMB.recycle();
         remoteHostMB.recycle();
         remotePort = -1;
@@ -672,10 +802,17 @@ public final class Request {
         authType.recycle();
         attributes.clear();
 
+        errorException = null;
+
         listener = null;
+        synchronized (nonBlockingStateLock) {
+            fireListener = false;
+            registeredForRead = false;
+        }
         allDataReadEventSent.set(false);
 
         startTime = -1;
+        threadId = 0;
     }
 
     // -------------------- Info  --------------------

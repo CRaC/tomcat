@@ -14,13 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.catalina.security;
 
 /**
- * Static class used to preload java classes when using the Java SecurityManager
- * so that the defineClassInPackage RuntimePermission does not trigger an
- * AccessControlException.
+ * Static class used to preload java classes when using the
+ * Java SecurityManager so that the defineClassInPackage
+ * RuntimePermission does not trigger an AccessControlException.
  *
  * @author Glenn L. Nielsen
  */
@@ -29,6 +28,7 @@ public final class SecurityClassLoad {
     public static void securityClassLoad(ClassLoader loader) throws Exception {
         securityClassLoad(loader, true);
     }
+
 
     static void securityClassLoad(ClassLoader loader, boolean requireSecurityManager) throws Exception {
 
@@ -43,11 +43,11 @@ public final class SecurityClassLoad {
         loadServletsPackage(loader);
         loadSessionPackage(loader);
         loadUtilPackage(loader);
-        loadValvesPackage(loader);
         loadJavaxPackage(loader);
         loadConnectorPackage(loader);
         loadTomcatPackage(loader);
     }
+
 
     private static final void loadCorePackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.core.";
@@ -61,11 +61,14 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "AsyncContextImpl$DebugException");
         loader.loadClass(basePackage + "AsyncListenerWrapper");
         loader.loadClass(basePackage + "ContainerBase$PrivilegedAddChild");
-        loadAnonymousInnerClasses(loader, basePackage + "DefaultInstanceManager");
         loader.loadClass(basePackage + "DefaultInstanceManager$AnnotationCacheEntry");
         loader.loadClass(basePackage + "DefaultInstanceManager$AnnotationCacheEntryType");
+        loader.loadClass(basePackage + "DefaultInstanceManager$PrivilegedGetField");
+        loader.loadClass(basePackage + "DefaultInstanceManager$PrivilegedGetMethod");
+        loader.loadClass(basePackage + "DefaultInstanceManager$PrivilegedLoadClass");
         loader.loadClass(basePackage + "ApplicationHttpRequest$AttributeNamesEnumerator");
     }
+
 
     private static final void loadLoaderPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.loader.";
@@ -73,10 +76,12 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "WebappClassLoaderBase$PrivilegedHasLoggingConfig");
     }
 
+
     private static final void loadRealmPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.realm.";
         loader.loadClass(basePackage + "LockOutRealm$LockRecord");
     }
+
 
     private static final void loadServletsPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.servlets.";
@@ -88,12 +93,14 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "DefaultServlet");
     }
 
+
     private static final void loadSessionPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.session.";
         loader.loadClass(basePackage + "StandardSession");
-        loadAnonymousInnerClasses(loader, basePackage + "StandardSession");
+        loader.loadClass(basePackage + "StandardSession$PrivilegedNewSessionFacade");
         loader.loadClass(basePackage + "StandardManager$PrivilegedDoUnload");
     }
+
 
     private static final void loadUtilPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.util.";
@@ -102,10 +109,6 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "TLSUtil");
     }
 
-    private static final void loadValvesPackage(ClassLoader loader) throws Exception {
-        final String basePackage = "org.apache.catalina.valves.";
-        loadAnonymousInnerClasses(loader, basePackage + "AbstractAccessLogValve");
-    }
 
     private static final void loadCoyotePackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.coyote.";
@@ -116,9 +119,11 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "http2.Stream$PrivilegedPush");
     }
 
+
     private static final void loadJavaxPackage(ClassLoader loader) throws Exception {
         loader.loadClass("javax.servlet.http.Cookie");
     }
+
 
     private static final void loadConnectorPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.catalina.connector.";
@@ -137,12 +142,14 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "ResponseFacade$SetContentTypePrivilegedAction");
         loader.loadClass(basePackage + "ResponseFacade$DateHeaderPrivilegedAction");
         loader.loadClass(basePackage + "RequestFacade$GetSessionPrivilegedAction");
-        loadAnonymousInnerClasses(loader, basePackage + "ResponseFacade");
+        loader.loadClass(basePackage + "ResponseFacade$FlushBufferPrivilegedAction");
         loadAnonymousInnerClasses(loader, basePackage + "OutputBuffer");
         loadAnonymousInnerClasses(loader, basePackage + "CoyoteInputStream");
+        loader.loadClass(basePackage + "CoyoteOutputStream");
         loadAnonymousInnerClasses(loader, basePackage + "InputBuffer");
         loadAnonymousInnerClasses(loader, basePackage + "Response");
     }
+
 
     private static final void loadTomcatPackage(ClassLoader loader) throws Exception {
         final String basePackage = "org.apache.tomcat.";
@@ -179,9 +186,20 @@ public final class SecurityClassLoad {
         loader.loadClass(basePackage + "util.net.NioBlockingSelector$BlockPoller$RunnableAdd");
         loader.loadClass(basePackage + "util.net.NioBlockingSelector$BlockPoller$RunnableCancel");
         loader.loadClass(basePackage + "util.net.NioBlockingSelector$BlockPoller$RunnableRemove");
+        loader.loadClass(basePackage + "util.net.AprEndpoint$AprSocketWrapper$AprOperationState");
+        loader.loadClass(basePackage + "util.net.NioEndpoint$NioSocketWrapper$NioOperationState");
+        loader.loadClass(basePackage + "util.net.Nio2Endpoint$Nio2SocketWrapper$Nio2OperationState");
+        loader.loadClass(basePackage + "util.net.SocketWrapperBase$BlockingMode");
+        loader.loadClass(basePackage + "util.net.SocketWrapperBase$CompletionCheck");
+        loader.loadClass(basePackage + "util.net.SocketWrapperBase$CompletionHandlerCall");
+        loader.loadClass(basePackage + "util.net.SocketWrapperBase$CompletionState");
+        loader.loadClass(basePackage + "util.net.SocketWrapperBase$VectoredIOCompletionHandler");
+        loader.loadClass(basePackage + "util.net.TLSClientHelloExtractor");
+        loader.loadClass(basePackage + "util.net.TLSClientHelloExtractor$ExtractorResult");
         // security
         loader.loadClass(basePackage + "util.security.PrivilegedGetTccl");
         loader.loadClass(basePackage + "util.security.PrivilegedSetTccl");
+        loader.loadClass(basePackage + "util.security.PrivilegedSetAccessControlContext");
     }
 
     private static final void loadAnonymousInnerClasses(ClassLoader loader, String enclosingClass) {

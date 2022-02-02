@@ -191,7 +191,6 @@ public class CallParamRule extends Rule {
      */
     @Override
     public String toString() {
-
         StringBuilder sb = new StringBuilder("CallParamRule[");
         sb.append("paramIndex=");
         sb.append(paramIndex);
@@ -199,9 +198,8 @@ public class CallParamRule extends Rule {
         sb.append(attributeName);
         sb.append(", from stack=");
         sb.append(fromStack);
-        sb.append("]");
-        return (sb.toString());
-
+        sb.append(']');
+        return sb.toString();
     }
 
 

@@ -100,6 +100,7 @@ import org.apache.catalina.WebResource;
 import org.apache.catalina.WebResourceRoot;
 import org.apache.catalina.Wrapper;
 import org.apache.catalina.deploy.NamingResourcesImpl;
+import org.apache.catalina.loader.WebappClassLoaderBase;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.session.StandardManager;
 import org.apache.catalina.util.CharsetMapper;
@@ -115,7 +116,6 @@ import org.apache.tomcat.InstanceManager;
 import org.apache.tomcat.InstanceManagerBindings;
 import org.apache.tomcat.JarScanner;
 import org.apache.tomcat.util.ExceptionUtils;
-import org.apache.tomcat.util.IntrospectionUtils;
 import org.apache.tomcat.util.buf.StringUtils;
 import org.apache.tomcat.util.buf.UDecoder;
 import org.apache.tomcat.util.descriptor.XmlIdentifiers;
@@ -753,6 +753,12 @@ public class StandardContext extends ContainerBase
     private boolean clearReferencesThreadLocals = true;
 
     /**
+     * Should Tomcat skip the memory leak checks when the web application is
+     * stopped as part of the process of shutting down the JVM?
+     */
+    private boolean skipMemoryLeakChecksOnJvmShutdown = false;
+
+    /**
      * Should the effective web.xml be logged when the context starts?
      */
     private boolean logEffectiveWebXml = false;
@@ -849,6 +855,11 @@ public class StandardContext extends ContainerBase
     }
 
 
+    public long getInProgressAsyncCount() {
+        return inProgressAsyncCount.get();
+    }
+
+
     @Override
     public void setAllowMultipleLeadingForwardSlashInPath(
             boolean allowMultipleLeadingForwardSlashInPath) {
@@ -882,7 +893,17 @@ public class StandardContext extends ContainerBase
 
     @Override
     public void setResponseCharacterEncoding(String responseEncoding) {
-        this.responseEncoding = responseEncoding;
+        /*
+         * This ensures that the context response encoding is represented by a
+         * unique String object. This enables the Default Servlet to
+         * differentiate between a Response using this default encoding and one
+         * that has been explicitly configured.
+         */
+        if (responseEncoding == null) {
+            this.responseEncoding = null;
+        } else {
+            this.responseEncoding = new String(responseEncoding);
+        }
     }
 
 
@@ -1138,8 +1159,9 @@ public class StandardContext extends ContainerBase
         Pipeline pipeline = getPipeline();
         if (pipeline != null) {
             Valve basic = pipeline.getBasic();
-            if (basic instanceof Authenticator)
+            if (basic instanceof Authenticator) {
                 return (Authenticator) basic;
+            }
             for (Valve valve : pipeline.getValves()) {
                 if (valve instanceof Authenticator) {
                     return (Authenticator) valve;
@@ -1255,9 +1277,7 @@ public class StandardContext extends ContainerBase
      * @return <code>true</code> if classloading delegates to the parent classloader first
      */
     public boolean getDelegate() {
-
-        return (this.delegate);
-
+        return this.delegate;
     }
 
 
@@ -1281,9 +1301,7 @@ public class StandardContext extends ContainerBase
      * @return true if the internal naming support is used.
      */
     public boolean isUseNaming() {
-
-        return (useNaming);
-
+        return useNaming;
     }
 
 
@@ -1332,7 +1350,7 @@ public class StandardContext extends ContainerBase
 
     @Override
     public Object[] getApplicationLifecycleListeners() {
-        return (applicationLifecycleListenersObjects);
+        return applicationLifecycleListenersObjects;
     }
 
 
@@ -1368,9 +1386,7 @@ public class StandardContext extends ContainerBase
      * @return the antiResourceLocking flag for this Context.
      */
     public boolean getAntiResourceLocking() {
-
-        return (this.antiResourceLocking);
-
+        return this.antiResourceLocking;
     }
 
 
@@ -1406,7 +1422,7 @@ public class StandardContext extends ContainerBase
             }
         }
 
-        return (this.charsetMapper);
+        return this.charsetMapper;
 
     }
 
@@ -1420,8 +1436,9 @@ public class StandardContext extends ContainerBase
 
         CharsetMapper oldCharsetMapper = this.charsetMapper;
         this.charsetMapper = mapper;
-        if( mapper != null )
+        if( mapper != null ) {
             this.charsetMapperClass= mapper.getClass().getName();
+        }
         support.firePropertyChange("charsetMapper", oldCharsetMapper,
                                    this.charsetMapper);
 
@@ -1711,9 +1728,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String getDisplayName() {
-
-        return (this.displayName);
-
+        return this.displayName;
     }
 
 
@@ -1760,9 +1775,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getDistributable() {
-
-        return (this.distributable);
-
+        return this.distributable;
     }
 
     /**
@@ -1782,17 +1795,13 @@ public class StandardContext extends ContainerBase
 
     @Override
     public String getDocBase() {
-
-        return (this.docBase);
-
+        return this.docBase;
     }
 
 
     @Override
     public void setDocBase(String docBase) {
-
         this.docBase = docBase;
-
     }
 
 
@@ -1833,8 +1842,9 @@ public class StandardContext extends ContainerBase
         try {
             // Change components if necessary
             oldLoader = this.loader;
-            if (oldLoader == loader)
+            if (oldLoader == loader) {
                 return;
+            }
             this.loader = loader;
 
             // Stop the old component if necessary
@@ -1848,8 +1858,9 @@ public class StandardContext extends ContainerBase
             }
 
             // Start the new component if necessary
-            if (loader != null)
+            if (loader != null) {
                 loader.setContext(this);
+            }
             if (getState().isAvailable() && (loader != null) &&
                 (loader instanceof Lifecycle)) {
                 try {
@@ -1888,8 +1899,9 @@ public class StandardContext extends ContainerBase
         try {
             // Change components if necessary
             oldManager = this.manager;
-            if (oldManager == manager)
+            if (oldManager == manager) {
                 return;
+            }
             this.manager = manager;
 
             // Stop the old component if necessary
@@ -1951,9 +1963,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public LoginConfig getLoginConfig() {
-
-        return (this.loginConfig);
-
+        return this.loginConfig;
     }
 
 
@@ -1966,15 +1976,17 @@ public class StandardContext extends ContainerBase
     public void setLoginConfig(LoginConfig config) {
 
         // Validate the incoming property value
-        if (config == null)
+        if (config == null) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.loginConfig.required"));
+        }
         String loginPage = config.getLoginPage();
         if ((loginPage != null) && !loginPage.startsWith("/")) {
             if (isServlet22()) {
-                if(log.isDebugEnabled())
+                if(log.isDebugEnabled()) {
                     log.debug(sm.getString("standardContext.loginConfig.loginWarning",
                                  loginPage));
+                }
                 config.setLoginPage("/" + loginPage);
             } else {
                 throw new IllegalArgumentException
@@ -1985,9 +1997,10 @@ public class StandardContext extends ContainerBase
         String errorPage = config.getErrorPage();
         if ((errorPage != null) && !errorPage.startsWith("/")) {
             if (isServlet22()) {
-                if(log.isDebugEnabled())
+                if(log.isDebugEnabled()) {
                     log.debug(sm.getString("standardContext.loginConfig.errorWarning",
                                  errorPage));
+                }
                 config.setErrorPage("/" + errorPage);
             } else {
                 throw new IllegalArgumentException
@@ -2010,12 +2023,10 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public NamingResourcesImpl getNamingResources() {
-
         if (namingResources == null) {
             setNamingResources(new NamingResourcesImpl());
         }
-        return (namingResources);
-
+        return namingResources;
     }
 
 
@@ -2076,7 +2087,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String getPath() {
-        return (path);
+        return path;
     }
 
 
@@ -2091,7 +2102,7 @@ public class StandardContext extends ContainerBase
         if (path == null || path.equals("/")) {
             invalid = true;
             this.path = "";
-        } else if ("".equals(path) || path.startsWith("/")) {
+        } else if (path.isEmpty() || path.startsWith("/")) {
             this.path = path;
         } else {
             invalid = true;
@@ -2118,9 +2129,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String getPublicId() {
-
-        return (this.publicId);
-
+        return this.publicId;
     }
 
 
@@ -2133,9 +2142,10 @@ public class StandardContext extends ContainerBase
     @Override
     public void setPublicId(String publicId) {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("Setting deployment descriptor public ID to '" +
                 publicId + "'");
+        }
 
         String oldPublicId = this.publicId;
         this.publicId = publicId;
@@ -2149,9 +2159,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getReloadable() {
-
-        return (this.reloadable);
-
+        return this.reloadable;
     }
 
 
@@ -2160,9 +2168,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getOverride() {
-
-        return (this.override);
-
+        return this.override;
     }
 
 
@@ -2172,9 +2178,7 @@ public class StandardContext extends ContainerBase
      * Is only set as deployment has change docRoot!
      */
     public String getOriginalDocBase() {
-
-        return (this.originalDocBase);
-
+        return this.originalDocBase;
     }
 
     /**
@@ -2196,14 +2200,15 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public ClassLoader getParentClassLoader() {
-        if (parentClassLoader != null)
-            return (parentClassLoader);
+        if (parentClassLoader != null) {
+            return parentClassLoader;
+        }
         if (getPrivileged()) {
             return this.getClass().getClassLoader();
         } else if (parent != null) {
-            return (parent.getParentClassLoader());
+            return parent.getParentClassLoader();
         }
-        return (ClassLoader.getSystemClassLoader());
+        return ClassLoader.getSystemClassLoader();
     }
 
 
@@ -2212,9 +2217,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getPrivileged() {
-
-        return (this.privileged);
-
+        return this.privileged;
     }
 
 
@@ -2290,14 +2293,13 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public ServletContext getServletContext() {
-
         if (context == null) {
             context = new ApplicationContext(this);
-            if (altDDName != null)
+            if (altDDName != null) {
                 context.setAttribute(Globals.ALT_DD_ATTR,altDDName);
+            }
         }
-        return (context.getFacade());
-
+        return context.getFacade();
     }
 
 
@@ -2307,9 +2309,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public int getSessionTimeout() {
-
-        return (this.sessionTimeout);
-
+        return this.sessionTimeout;
     }
 
 
@@ -2341,9 +2341,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getSwallowOutput() {
-
-        return (this.swallowOutput);
-
+        return this.swallowOutput;
     }
 
 
@@ -2370,9 +2368,7 @@ public class StandardContext extends ContainerBase
      * @return the value of the unloadDelay flag.
      */
     public long getUnloadDelay() {
-
-        return (this.unloadDelay);
-
+        return this.unloadDelay;
     }
 
 
@@ -2399,9 +2395,7 @@ public class StandardContext extends ContainerBase
      * @return unpack WAR flag.
      */
     public boolean getUnpackWAR() {
-
-        return (unpackWAR);
-
+        return unpackWAR;
     }
 
 
@@ -2411,9 +2405,7 @@ public class StandardContext extends ContainerBase
      * @param unpackWAR <code>true</code> to unpack WARs on deployment
      */
     public void setUnpackWAR(boolean unpackWAR) {
-
         this.unpackWAR = unpackWAR;
-
     }
 
 
@@ -2446,9 +2438,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String getWrapperClass() {
-
-        return (this.wrapperClassName);
-
+        return this.wrapperClassName;
     }
 
 
@@ -2504,8 +2494,9 @@ public class StandardContext extends ContainerBase
             }
 
             oldResources = this.resources;
-            if (oldResources == resources)
+            if (oldResources == resources) {
                 return;
+            }
 
             this.resources = resources;
             if (oldResources != null) {
@@ -2571,9 +2562,7 @@ public class StandardContext extends ContainerBase
      * @return the Locale to character set mapper class for this Context.
      */
     public String getCharsetMapperClass() {
-
-        return (this.charsetMapperClass);
-
+        return this.charsetMapperClass;
     }
 
 
@@ -2619,9 +2608,7 @@ public class StandardContext extends ContainerBase
      * @return the work directory for this Context.
      */
     public String getWorkDir() {
-
-        return (this.workDir);
-
+        return this.workDir;
     }
 
 
@@ -2657,9 +2644,7 @@ public class StandardContext extends ContainerBase
      * @return the clearReferencesStopThreads flag for this Context.
      */
     public boolean getClearReferencesStopThreads() {
-
-        return (this.clearReferencesStopThreads);
-
+        return this.clearReferencesStopThreads;
     }
 
 
@@ -2684,7 +2669,7 @@ public class StandardContext extends ContainerBase
      * @return the clearReferencesStopTimerThreads flag for this Context.
      */
     public boolean getClearReferencesStopTimerThreads() {
-        return (this.clearReferencesStopTimerThreads);
+        return this.clearReferencesStopTimerThreads;
     }
 
 
@@ -2710,7 +2695,7 @@ public class StandardContext extends ContainerBase
      * Context.
      */
     public boolean getClearReferencesHttpClientKeepAliveThread() {
-        return (this.clearReferencesHttpClientKeepAliveThread);
+        return this.clearReferencesHttpClientKeepAliveThread;
     }
 
 
@@ -2772,6 +2757,16 @@ public class StandardContext extends ContainerBase
     }
 
 
+    public boolean getSkipMemoryLeakChecksOnJvmShutdown() {
+        return skipMemoryLeakChecksOnJvmShutdown;
+    }
+
+
+    public void setSkipMemoryLeakChecksOnJvmShutdown(boolean skipMemoryLeakChecksOnJvmShutdown) {
+        this.skipMemoryLeakChecksOnJvmShutdown = skipMemoryLeakChecksOnJvmShutdown;
+    }
+
+
     public Boolean getFailCtxIfServletStartFails() {
         return failCtxIfServletStartFails;
     }
@@ -2822,7 +2817,6 @@ public class StandardContext extends ContainerBase
         }
         fireContainerEvent("addApplicationListener", listener);
 
-        // FIXME - add instance if already started?
     }
 
 
@@ -2837,8 +2831,9 @@ public class StandardContext extends ContainerBase
         synchronized (applicationParametersLock) {
             String newName = parameter.getName();
             for (ApplicationParameter p : applicationParameters) {
-                if (newName.equals(p.getName()) && !p.getOverride())
+                if (newName.equals(p.getName()) && !p.getOverride()) {
                     return;
+                }
             }
             ApplicationParameter results[] = Arrays.copyOf(
                     applicationParameters, applicationParameters.length + 1);
@@ -2905,18 +2900,19 @@ public class StandardContext extends ContainerBase
 
         // Validate the proposed constraint
         SecurityCollection collections[] = constraint.findCollections();
-        for (int i = 0; i < collections.length; i++) {
-            String patterns[] = collections[i].findPatterns();
+        for (SecurityCollection collection : collections) {
+            String patterns[] = collection.findPatterns();
             for (int j = 0; j < patterns.length; j++) {
                 patterns[j] = adjustURLPattern(patterns[j]);
-                if (!validateURLPattern(patterns[j]))
+                if (!validateURLPattern(patterns[j])) {
                     throw new IllegalArgumentException
-                        (sm.getString
-                         ("standardContext.securityConstraint.pattern",
-                          patterns[j]));
+                            (sm.getString
+                                    ("standardContext.securityConstraint.pattern",
+                                            patterns[j]));
+                }
             }
-            if (collections[i].findMethods().length > 0 &&
-                    collections[i].findOmittedMethods().length > 0) {
+            if (collection.findMethods().length > 0 &&
+                    collection.findOmittedMethods().length > 0) {
                 throw new IllegalArgumentException(sm.getString(
                         "standardContext.securityConstraint.mixHttpMethod"));
             }
@@ -2926,8 +2922,9 @@ public class StandardContext extends ContainerBase
         synchronized (constraintsLock) {
             SecurityConstraint results[] =
                 new SecurityConstraint[constraints.length + 1];
-            for (int i = 0; i < constraints.length; i++)
+            for (int i = 0; i < constraints.length; i++) {
                 results[i] = constraints[i];
+            }
             results[constraints.length] = constraint;
             constraints = results;
         }
@@ -2944,15 +2941,17 @@ public class StandardContext extends ContainerBase
     @Override
     public void addErrorPage(ErrorPage errorPage) {
         // Validate the input parameters
-        if (errorPage == null)
+        if (errorPage == null) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.errorPage.required"));
+        }
         String location = errorPage.getLocation();
         if ((location != null) && !location.startsWith("/")) {
             if (isServlet22()) {
-                if(log.isDebugEnabled())
+                if(log.isDebugEnabled()) {
                     log.debug(sm.getString("standardContext.errorPage.warning",
                                  location));
+                }
                 errorPage.setLocation("/" + location);
             } else {
                 throw new IllegalArgumentException
@@ -3030,26 +3029,22 @@ public class StandardContext extends ContainerBase
         String filterName = filterMap.getFilterName();
         String[] servletNames = filterMap.getServletNames();
         String[] urlPatterns = filterMap.getURLPatterns();
-        if (findFilterDef(filterName) == null)
+        if (findFilterDef(filterName) == null) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.filterMap.name", filterName));
+        }
 
         if (!filterMap.getMatchAllServletNames() &&
             !filterMap.getMatchAllUrlPatterns() &&
-            (servletNames.length == 0) && (urlPatterns.length == 0))
+            (servletNames.length == 0) && (urlPatterns.length == 0)) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.filterMap.either"));
-        // FIXME: Older spec revisions may still check this
-        /*
-        if ((servletNames.length != 0) && (urlPatterns.length != 0))
-            throw new IllegalArgumentException
-                (sm.getString("standardContext.filterMap.either"));
-        */
-        for (int i = 0; i < urlPatterns.length; i++) {
-            if (!validateURLPattern(urlPatterns[i])) {
+        }
+        for (String urlPattern : urlPatterns) {
+            if (!validateURLPattern(urlPattern)) {
                 throw new IllegalArgumentException
-                    (sm.getString("standardContext.filterMap.pattern",
-                            urlPatterns[i]));
+                        (sm.getString("standardContext.filterMap.pattern",
+                                urlPattern));
             }
         }
     }
@@ -3171,8 +3166,9 @@ public class StandardContext extends ContainerBase
 
         synchronized (securityRolesLock) {
             String results[] =new String[securityRoles.length + 1];
-            for (int i = 0; i < securityRoles.length; i++)
+            for (int i = 0; i < securityRoles.length; i++) {
                 results[i] = securityRoles[i];
+            }
             results[securityRoles.length] = role;
             securityRoles = results;
         }
@@ -3205,13 +3201,15 @@ public class StandardContext extends ContainerBase
     public void addServletMappingDecoded(String pattern, String name,
                                   boolean jspWildCard) {
         // Validate the proposed mapping
-        if (findChild(name) == null)
+        if (findChild(name) == null) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.servletMap.name", name));
+        }
         String adjustedPattern = adjustURLPattern(pattern);
-        if (!validateURLPattern(adjustedPattern))
+        if (!validateURLPattern(adjustedPattern)) {
             throw new IllegalArgumentException
                 (sm.getString("standardContext.servletMap.pattern", adjustedPattern));
+        }
 
         // Add this mapping to our registered set
         synchronized (servletMappingsLock) {
@@ -3240,8 +3238,9 @@ public class StandardContext extends ContainerBase
 
         synchronized (watchedResourcesLock) {
             String results[] = new String[watchedResources.length + 1];
-            for (int i = 0; i < watchedResources.length; i++)
+            for (int i = 0; i < watchedResources.length; i++) {
                 results[i] = watchedResources[i];
+            }
             results[watchedResources.length] = name;
             watchedResources = results;
         }
@@ -3266,13 +3265,15 @@ public class StandardContext extends ContainerBase
                 setReplaceWelcomeFiles(false);
             }
             String results[] =new String[welcomeFiles.length + 1];
-            for (int i = 0; i < welcomeFiles.length; i++)
+            for (int i = 0; i < welcomeFiles.length; i++) {
                 results[i] = welcomeFiles[i];
+            }
             results[welcomeFiles.length] = name;
             welcomeFiles = results;
         }
-        if(this.getState().equals(LifecycleState.STARTED))
+        if(this.getState().equals(LifecycleState.STARTED)) {
             fireContainerEvent(ADD_WELCOME_FILE_EVENT, name);
+        }
     }
 
 
@@ -3287,8 +3288,9 @@ public class StandardContext extends ContainerBase
 
         synchronized (wrapperLifecyclesLock) {
             String results[] =new String[wrapperLifecycles.length + 1];
-            for (int i = 0; i < wrapperLifecycles.length; i++)
+            for (int i = 0; i < wrapperLifecycles.length; i++) {
                 results[i] = wrapperLifecycles[i];
+            }
             results[wrapperLifecycles.length] = listener;
             wrapperLifecycles = results;
         }
@@ -3308,8 +3310,9 @@ public class StandardContext extends ContainerBase
 
         synchronized (wrapperListenersLock) {
             String results[] =new String[wrapperListeners.length + 1];
-            for (int i = 0; i < wrapperListeners.length; i++)
+            for (int i = 0; i < wrapperListeners.length; i++) {
                 results[i] = wrapperListeners[i];
+            }
             results[wrapperListeners.length] = listener;
             wrapperListeners = results;
         }
@@ -3341,11 +3344,11 @@ public class StandardContext extends ContainerBase
         }
 
         synchronized (wrapperLifecyclesLock) {
-            for (int i = 0; i < wrapperLifecycles.length; i++) {
+            for (String wrapperLifecycle : wrapperLifecycles) {
                 try {
-                    Class<?> clazz = Class.forName(wrapperLifecycles[i]);
+                    Class<?> clazz = Class.forName(wrapperLifecycle);
                     LifecycleListener listener =
-                        (LifecycleListener) clazz.getConstructor().newInstance();
+                            (LifecycleListener) clazz.getConstructor().newInstance();
                     wrapper.addLifecycleListener(listener);
                 } catch (Throwable t) {
                     ExceptionUtils.handleThrowable(t);
@@ -3356,9 +3359,9 @@ public class StandardContext extends ContainerBase
         }
 
         synchronized (wrapperListenersLock) {
-            for (int i = 0; i < wrapperListeners.length; i++) {
+            for (String wrapperListener : wrapperListeners) {
                 try {
-                    Class<?> clazz = Class.forName(wrapperListeners[i]);
+                    Class<?> clazz = Class.forName(wrapperListener);
                     ContainerListener listener =
                             (ContainerListener) clazz.getConstructor().newInstance();
                     wrapper.addContainerListener(listener);
@@ -3391,7 +3394,7 @@ public class StandardContext extends ContainerBase
     public ApplicationParameter[] findApplicationParameters() {
 
         synchronized (applicationParametersLock) {
-            return (applicationParameters);
+            return applicationParameters;
         }
 
     }
@@ -3403,9 +3406,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public SecurityConstraint[] findConstraints() {
-
-        return (constraints);
-
+        return constraints;
     }
 
 
@@ -3452,11 +3453,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public FilterDef findFilterDef(String filterName) {
-
         synchronized (filterDefs) {
-            return (filterDefs.get(filterName));
+            return filterDefs.get(filterName);
         }
-
     }
 
 
@@ -3465,12 +3464,10 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public FilterDef[] findFilterDefs() {
-
         synchronized (filterDefs) {
             FilterDef results[] = new FilterDef[filterDefs.size()];
-            return (filterDefs.values().toArray(results));
+            return filterDefs.values().toArray(results);
         }
-
     }
 
 
@@ -3490,11 +3487,9 @@ public class StandardContext extends ContainerBase
      * @param name Name of the desired message destination
      */
     public MessageDestination findMessageDestination(String name) {
-
         synchronized (messageDestinations) {
-            return (messageDestinations.get(name));
+            return messageDestinations.get(name);
         }
-
     }
 
 
@@ -3504,13 +3499,11 @@ public class StandardContext extends ContainerBase
      * is returned.
      */
     public MessageDestination[] findMessageDestinations() {
-
         synchronized (messageDestinations) {
             MessageDestination results[] =
                 new MessageDestination[messageDestinations.size()];
-            return (messageDestinations.values().toArray(results));
+            return messageDestinations.values().toArray(results);
         }
-
     }
 
 
@@ -3521,9 +3514,7 @@ public class StandardContext extends ContainerBase
      * @param name Name of the desired message destination ref
      */
     public MessageDestinationRef findMessageDestinationRef(String name) {
-
         return namingResources.findMessageDestinationRef(name);
-
     }
 
 
@@ -3533,9 +3524,7 @@ public class StandardContext extends ContainerBase
      * is returned.
      */
     public MessageDestinationRef[] findMessageDestinationRefs() {
-
         return namingResources.findMessageDestinationRefs();
-
     }
 
 
@@ -3547,9 +3536,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String findMimeMapping(String extension) {
-
-        return (mimeMappings.get(extension.toLowerCase(Locale.ENGLISH)));
-
+        return mimeMappings.get(extension.toLowerCase(Locale.ENGLISH));
     }
 
 
@@ -3559,13 +3546,10 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findMimeMappings() {
-
         synchronized (mimeMappings) {
             String results[] = new String[mimeMappings.size()];
-            return
-                (mimeMappings.keySet().toArray(results));
+            return mimeMappings.keySet().toArray(results);
         }
-
     }
 
 
@@ -3588,9 +3572,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findParameters() {
-        List<String> parameterNames = new ArrayList<>(parameters.size());
-        parameterNames.addAll(parameters.keySet());
-        return parameterNames.toArray(new String[parameterNames.size()]);
+        return parameters.keySet().toArray(new String[0]);
     }
 
 
@@ -3604,16 +3586,15 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String findRoleMapping(String role) {
-
         String realRole = null;
         synchronized (roleMappings) {
             realRole = roleMappings.get(role);
         }
-        if (realRole != null)
-            return (realRole);
-        else
-            return (role);
-
+        if (realRole != null) {
+            return realRole;
+        } else {
+            return role;
+        }
     }
 
 
@@ -3627,9 +3608,10 @@ public class StandardContext extends ContainerBase
     public boolean findSecurityRole(String role) {
 
         synchronized (securityRolesLock) {
-            for (int i = 0; i < securityRoles.length; i++) {
-                if (role.equals(securityRoles[i]))
+            for (String securityRole : securityRoles) {
+                if (role.equals(securityRole)) {
                     return true;
+                }
             }
         }
         return false;
@@ -3643,11 +3625,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findSecurityRoles() {
-
         synchronized (securityRolesLock) {
-            return (securityRoles);
+            return securityRoles;
         }
-
     }
 
 
@@ -3659,11 +3639,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String findServletMapping(String pattern) {
-
         synchronized (servletMappingsLock) {
-            return (servletMappings.get(pattern));
+            return servletMappings.get(pattern);
         }
-
     }
 
 
@@ -3673,13 +3651,10 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findServletMappings() {
-
         synchronized (servletMappingsLock) {
             String results[] = new String[servletMappings.size()];
-            return
-               (servletMappings.keySet().toArray(results));
+            return servletMappings.keySet().toArray(results);
         }
-
     }
 
 
@@ -3723,9 +3698,10 @@ public class StandardContext extends ContainerBase
     public boolean findWelcomeFile(String name) {
 
         synchronized (welcomeFilesLock) {
-            for (int i = 0; i < welcomeFiles.length; i++) {
-                if (name.equals(welcomeFiles[i]))
+            for (String welcomeFile : welcomeFiles) {
+                if (name.equals(welcomeFile)) {
                     return true;
+                }
             }
         }
         return false;
@@ -3751,11 +3727,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findWelcomeFiles() {
-
         synchronized (welcomeFilesLock) {
-            return (welcomeFiles);
+            return welcomeFiles;
         }
-
     }
 
 
@@ -3765,11 +3739,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findWrapperLifecycles() {
-
         synchronized (wrapperLifecyclesLock) {
-            return (wrapperLifecycles);
+            return wrapperLifecycles;
         }
-
     }
 
 
@@ -3779,11 +3751,9 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public String[] findWrapperListeners() {
-
         synchronized (wrapperListenersLock) {
-            return (wrapperListeners);
+            return wrapperListeners;
         }
-
     }
 
 
@@ -3806,13 +3776,15 @@ public class StandardContext extends ContainerBase
     public synchronized void reload() {
 
         // Validate our current component state
-        if (!getState().isAvailable())
+        if (!getState().isAvailable()) {
             throw new IllegalStateException
                 (sm.getString("standardContext.notStarted", getName()));
+        }
 
-        if(log.isInfoEnabled())
+        if(log.isInfoEnabled()) {
             log.info(sm.getString("standardContext.reloadingStarted",
                     getName()));
+        }
 
         // Stop accepting requests temporarily.
         setPaused(true);
@@ -3833,9 +3805,10 @@ public class StandardContext extends ContainerBase
 
         setPaused(false);
 
-        if(log.isInfoEnabled())
+        if(log.isInfoEnabled()) {
             log.info(sm.getString("standardContext.reloadingCompleted",
                     getName()));
+        }
 
     }
 
@@ -3859,15 +3832,17 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified listener
             int j = 0;
             String results[] = new String[applicationListeners.length - 1];
             for (int i = 0; i < applicationListeners.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = applicationListeners[i];
+                }
             }
             applicationListeners = results;
 
@@ -3876,7 +3851,6 @@ public class StandardContext extends ContainerBase
         // Inform interested listeners
         fireContainerEvent("removeApplicationListener", listener);
 
-        // FIXME - behavior if already started?
     }
 
 
@@ -3899,16 +3873,18 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified parameter
             int j = 0;
             ApplicationParameter results[] =
                 new ApplicationParameter[applicationParameters.length - 1];
             for (int i = 0; i < applicationParameters.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = applicationParameters[i];
+                }
             }
             applicationParameters = results;
 
@@ -3960,16 +3936,18 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified constraint
             int j = 0;
             SecurityConstraint results[] =
                 new SecurityConstraint[constraints.length - 1];
             for (int i = 0; i < constraints.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = constraints[i];
+                }
             }
             constraints = results;
 
@@ -4116,15 +4094,17 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified security role
             int j = 0;
             String results[] = new String[securityRoles.length - 1];
             for (int i = 0; i < securityRoles.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = securityRoles[i];
+                }
             }
             securityRoles = results;
 
@@ -4176,15 +4156,17 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified watched resource
             int j = 0;
             String results[] = new String[watchedResources.length - 1];
             for (int i = 0; i < watchedResources.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = watchedResources[i];
+                }
             }
             watchedResources = results;
 
@@ -4214,23 +4196,26 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified welcome file
             int j = 0;
             String results[] = new String[welcomeFiles.length - 1];
             for (int i = 0; i < welcomeFiles.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = welcomeFiles[i];
+                }
             }
             welcomeFiles = results;
 
         }
 
         // Inform interested listeners
-        if(this.getState().equals(LifecycleState.STARTED))
+        if(this.getState().equals(LifecycleState.STARTED)) {
             fireContainerEvent(REMOVE_WELCOME_FILE_EVENT, name);
+        }
 
     }
 
@@ -4255,15 +4240,17 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified lifecycle listener
             int j = 0;
             String results[] = new String[wrapperLifecycles.length - 1];
             for (int i = 0; i < wrapperLifecycles.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = wrapperLifecycles[i];
+                }
             }
             wrapperLifecycles = results;
 
@@ -4295,15 +4282,17 @@ public class StandardContext extends ContainerBase
                     break;
                 }
             }
-            if (n < 0)
+            if (n < 0) {
                 return;
+            }
 
             // Remove the specified listener
             int j = 0;
             String results[] = new String[wrapperListeners.length - 1];
             for (int i = 0; i < wrapperListeners.length; i++) {
-                if (i != n)
+                if (i != n) {
                     results[j++] = wrapperListeners[i];
+                }
             }
             wrapperListeners = results;
 
@@ -4328,8 +4317,8 @@ public class StandardContext extends ContainerBase
 
         Container[] children = findChildren();
         if (children != null) {
-            for( int i=0; i< children.length; i++ ) {
-                result += ((StandardWrapper)children[i]).getProcessingTime();
+            for (Container child : children) {
+                result += ((StandardWrapper) child).getProcessingTime();
             }
         }
 
@@ -4350,10 +4339,11 @@ public class StandardContext extends ContainerBase
 
         Container[] children = findChildren();
         if (children != null) {
-            for( int i=0; i< children.length; i++ ) {
-                time = ((StandardWrapper)children[i]).getMaxTime();
-                if (time > result)
+            for (Container child : children) {
+                time = ((StandardWrapper) child).getMaxTime();
+                if (time > result) {
                     result = time;
+                }
             }
         }
 
@@ -4374,10 +4364,11 @@ public class StandardContext extends ContainerBase
 
         Container[] children = findChildren();
         if (children != null) {
-            for( int i=0; i< children.length; i++ ) {
-                time = ((StandardWrapper)children[i]).getMinTime();
-                if (result < 0 || time < result)
+            for (Container child : children) {
+                time = ((StandardWrapper) child).getMinTime();
+                if (result < 0 || time < result) {
                     result = time;
+                }
             }
         }
 
@@ -4397,8 +4388,8 @@ public class StandardContext extends ContainerBase
 
         Container[] children = findChildren();
         if (children != null) {
-            for( int i=0; i< children.length; i++ ) {
-                result += ((StandardWrapper)children[i]).getRequestCount();
+            for (Container child : children) {
+                result += ((StandardWrapper) child).getRequestCount();
             }
         }
 
@@ -4418,8 +4409,8 @@ public class StandardContext extends ContainerBase
 
         Container[] children = findChildren();
         if (children != null) {
-            for( int i=0; i< children.length; i++ ) {
-                result += ((StandardWrapper)children[i]).getErrorCount();
+            for (Container child : children) {
+                result += ((StandardWrapper) child).getErrorCount();
             }
         }
 
@@ -4573,8 +4564,9 @@ public class StandardContext extends ContainerBase
                         break;
                     }
                 }
-                if (n < 0)
+                if (n < 0) {
                     return;
+                }
 
                 // Remove the specified filter mapping
                 FilterMap results[] = new FilterMap[array.length - 1];
@@ -4636,14 +4628,16 @@ public class StandardContext extends ContainerBase
      */
     public boolean filterStop() {
 
-        if (getLogger().isDebugEnabled())
+        if (getLogger().isDebugEnabled()) {
             getLogger().debug("Stopping filters");
+        }
 
         // Release all Filter and FilterConfig instances
         synchronized (filterConfigs) {
             for (Entry<String, ApplicationFilterConfig> entry : filterConfigs.entrySet()) {
-                if (getLogger().isDebugEnabled())
+                if (getLogger().isDebugEnabled()) {
                     getLogger().debug(" Stopping filter '" + entry.getKey() + "'");
+                }
                 ApplicationFilterConfig filterConfig = entry.getValue();
                 filterConfig.release();
             }
@@ -4662,9 +4656,7 @@ public class StandardContext extends ContainerBase
      * @return the filter config object
      */
     public FilterConfig findFilterConfig(String name) {
-
-        return (filterConfigs.get(name));
-
+        return filterConfigs.get(name);
     }
 
 
@@ -4676,17 +4668,19 @@ public class StandardContext extends ContainerBase
      */
     public boolean listenerStart() {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("Configuring application event listeners");
+        }
 
         // Instantiate the required listeners
         String listeners[] = findApplicationListeners();
         Object results[] = new Object[listeners.length];
         boolean ok = true;
         for (int i = 0; i < results.length; i++) {
-            if (getLogger().isDebugEnabled())
+            if (getLogger().isDebugEnabled()) {
                 getLogger().debug(" Configuring event listener class '" +
                     listeners[i] + "'");
+            }
             try {
                 String listener = listeners[i];
                 results[i] = getInstanceManager().newInstance(listener);
@@ -4704,19 +4698,19 @@ public class StandardContext extends ContainerBase
         }
 
         // Sort listeners in two arrays
-        ArrayList<Object> eventListeners = new ArrayList<>();
-        ArrayList<Object> lifecycleListeners = new ArrayList<>();
-        for (int i = 0; i < results.length; i++) {
-            if ((results[i] instanceof ServletContextAttributeListener)
-                || (results[i] instanceof ServletRequestAttributeListener)
-                || (results[i] instanceof ServletRequestListener)
-                || (results[i] instanceof HttpSessionIdListener)
-                || (results[i] instanceof HttpSessionAttributeListener)) {
-                eventListeners.add(results[i]);
+        List<Object> eventListeners = new ArrayList<>();
+        List<Object> lifecycleListeners = new ArrayList<>();
+        for (Object result : results) {
+            if ((result instanceof ServletContextAttributeListener)
+                    || (result instanceof ServletRequestAttributeListener)
+                    || (result instanceof ServletRequestListener)
+                    || (result instanceof HttpSessionIdListener)
+                    || (result instanceof HttpSessionAttributeListener)) {
+                eventListeners.add(result);
             }
-            if ((results[i] instanceof ServletContextListener)
-                || (results[i] instanceof HttpSessionListener)) {
-                lifecycleListeners.add(results[i]);
+            if ((result instanceof ServletContextListener)
+                    || (result instanceof HttpSessionListener)) {
+                lifecycleListeners.add(result);
             }
         }
 
@@ -4725,9 +4719,7 @@ public class StandardContext extends ContainerBase
         // Put them these listeners after the ones defined in web.xml and/or
         // annotations then overwrite the list of instances with the new, full
         // list.
-        for (Object eventListener: getApplicationEventListeners()) {
-            eventListeners.add(eventListener);
-        }
+        eventListeners.addAll(Arrays.asList(getApplicationEventListeners()));
         setApplicationEventListeners(eventListeners.toArray());
         for (Object lifecycleListener: getApplicationLifecycleListeners()) {
             lifecycleListeners.add(lifecycleListener);
@@ -4739,8 +4731,9 @@ public class StandardContext extends ContainerBase
 
         // Send application start events
 
-        if (getLogger().isDebugEnabled())
+        if (getLogger().isDebugEnabled()) {
             getLogger().debug("Sending application start events");
+        }
 
         // Ensure context is not null
         getServletContext();
@@ -4757,11 +4750,11 @@ public class StandardContext extends ContainerBase
             noPluggabilityServletContext = new NoPluggabilityServletContext(getServletContext());
             tldEvent = new ServletContextEvent(noPluggabilityServletContext);
         }
-        for (int i = 0; i < instances.length; i++) {
-            if (!(instances[i] instanceof ServletContextListener))
+        for (Object instance : instances) {
+            if (!(instance instanceof ServletContextListener)) {
                 continue;
-            ServletContextListener listener =
-                (ServletContextListener) instances[i];
+            }
+            ServletContextListener listener = (ServletContextListener) instance;
             try {
                 fireContainerEvent("beforeContextInitialized", listener);
                 if (noPluggabilityListeners.contains(listener)) {
@@ -4773,13 +4766,12 @@ public class StandardContext extends ContainerBase
             } catch (Throwable t) {
                 ExceptionUtils.handleThrowable(t);
                 fireContainerEvent("afterContextInitialized", listener);
-                getLogger().error
-                    (sm.getString("standardContext.listenerStart",
-                                  instances[i].getClass().getName()), t);
+                getLogger().error(sm.getString("standardContext.listenerStart",
+                        instance.getClass().getName()), t);
                 ok = false;
             }
         }
-        return (ok);
+        return ok;
 
     }
 
@@ -4791,8 +4783,9 @@ public class StandardContext extends ContainerBase
      */
     public boolean listenerStop() {
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("Sending application stop events");
+        }
 
         boolean ok = true;
         Object listeners[] = getApplicationLifecycleListeners();
@@ -4804,8 +4797,9 @@ public class StandardContext extends ContainerBase
             }
             for (int i = 0; i < listeners.length; i++) {
                 int j = (listeners.length - 1) - i;
-                if (listeners[j] == null)
+                if (listeners[j] == null) {
                     continue;
+                }
                 if (listeners[j] instanceof ServletContextListener) {
                     ServletContextListener listener =
                         (ServletContextListener) listeners[j];
@@ -4846,8 +4840,9 @@ public class StandardContext extends ContainerBase
         if (listeners != null) {
             for (int i = 0; i < listeners.length; i++) {
                 int j = (listeners.length - 1) - i;
-                if (listeners[j] == null)
+                if (listeners[j] == null) {
                     continue;
+                }
                 try {
                     if (getInstanceManager() != null) {
                         getInstanceManager().destroyInstance(listeners[j]);
@@ -4935,11 +4930,12 @@ public class StandardContext extends ContainerBase
 
         // Collect "load on startup" servlets that need to be initialized
         TreeMap<Integer, ArrayList<Wrapper>> map = new TreeMap<>();
-        for (int i = 0; i < children.length; i++) {
-            Wrapper wrapper = (Wrapper) children[i];
+        for (Container child : children) {
+            Wrapper wrapper = (Wrapper) child;
             int loadOnStartup = wrapper.getLoadOnStartup();
-            if (loadOnStartup < 0)
+            if (loadOnStartup < 0) {
                 continue;
+            }
             Integer key = Integer.valueOf(loadOnStartup);
             ArrayList<Wrapper> list = map.get(key);
             if (list == null) {
@@ -4982,8 +4978,9 @@ public class StandardContext extends ContainerBase
     @Override
     protected synchronized void startInternal() throws LifecycleException {
 
-        if(log.isDebugEnabled())
+        if(log.isDebugEnabled()) {
             log.debug("Starting " + getBaseName());
+        }
 
         // Send j2ee.state.starting notification
         if (this.getObjectName() != null) {
@@ -5006,8 +5003,9 @@ public class StandardContext extends ContainerBase
 
         // Add missing components as necessary
         if (getResources() == null) {   // (1) Required by Loader
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Configuring default Resources");
+            }
 
             try {
                 setResources(new StandardRoot(this));
@@ -5021,7 +5019,7 @@ public class StandardContext extends ContainerBase
         }
 
         if (getLoader() == null) {
-            WebappLoader webappLoader = new WebappLoader(getParentClassLoader());
+            WebappLoader webappLoader = new WebappLoader();
             webappLoader.setDelegate(getDelegate());
             setLoader(webappLoader);
         }
@@ -5067,8 +5065,9 @@ public class StandardContext extends ContainerBase
         }
 
         // Standard container startup
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("Processing standard container startup");
+        }
 
 
         // Binding thread
@@ -5084,18 +5083,15 @@ public class StandardContext extends ContainerBase
 
                 // since the loader just started, the webapp classloader is now
                 // created.
-                setClassLoaderProperty("clearReferencesRmiTargets",
-                        getClearReferencesRmiTargets());
-                setClassLoaderProperty("clearReferencesStopThreads",
-                        getClearReferencesStopThreads());
-                setClassLoaderProperty("clearReferencesStopTimerThreads",
-                        getClearReferencesStopTimerThreads());
-                setClassLoaderProperty("clearReferencesHttpClientKeepAliveThread",
-                        getClearReferencesHttpClientKeepAliveThread());
-                setClassLoaderProperty("clearReferencesObjectStreamClassCaches",
-                        getClearReferencesObjectStreamClassCaches());
-                setClassLoaderProperty("clearReferencesThreadLocals",
-                        getClearReferencesThreadLocals());
+                if (loader.getClassLoader() instanceof WebappClassLoaderBase) {
+                    WebappClassLoaderBase cl = (WebappClassLoaderBase) loader.getClassLoader();
+                    cl.setClearReferencesRmiTargets(getClearReferencesRmiTargets());
+                    cl.setClearReferencesStopThreads(getClearReferencesStopThreads());
+                    cl.setClearReferencesStopTimerThreads(getClearReferencesStopTimerThreads());
+                    cl.setClearReferencesHttpClientKeepAliveThread(getClearReferencesHttpClientKeepAliveThread());
+                    cl.setClearReferencesObjectStreamClassCaches(getClearReferencesObjectStreamClassCaches());
+                    cl.setClearReferencesThreadLocals(getClearReferencesThreadLocals());
+                }
 
                 // By calling unbindThread and bindThread in a row, we setup the
                 // current Thread CCL to be the webapp classloader
@@ -5155,7 +5151,7 @@ public class StandardContext extends ContainerBase
                                 Boolean.valueOf((getCluster() != null)),
                                 Boolean.valueOf(distributable)));
                     }
-                    if ( (getCluster() != null) && distributable) {
+                    if ((getCluster() != null) && distributable) {
                         try {
                             contextManager = getCluster().createManager(getName());
                         } catch (Exception ex) {
@@ -5189,11 +5185,10 @@ public class StandardContext extends ContainerBase
             }
 
             // We put the resources into the servlet context
-            if (ok)
+            if (ok) {
                 getServletContext().setAttribute
                     (Globals.RESOURCES_ATTR, getResources());
 
-            if (ok ) {
                 if (getInstanceManager() == null) {
                     javax.naming.Context context = null;
                     if (isUseNaming() && getNamingContextListener() != null) {
@@ -5207,12 +5202,13 @@ public class StandardContext extends ContainerBase
                 getServletContext().setAttribute(
                         InstanceManager.class.getName(), getInstanceManager());
                 InstanceManagerBindings.bind(getLoader().getClassLoader(), getInstanceManager());
-            }
 
-            // Create context attributes that will be required
-            if (ok) {
+                // Create context attributes that will be required
                 getServletContext().setAttribute(
                         JarScanner.class.getName(), getJarScanner());
+
+                // Make the version info available
+                getServletContext().setAttribute(Globals.WEBAPP_VERSION, getWebappVersion());
             }
 
             // Set up the context init params
@@ -5282,8 +5278,9 @@ public class StandardContext extends ContainerBase
 
         // Set available status depending upon startup success
         if (ok) {
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Starting completed");
+            }
         } else {
             log.error(sm.getString("standardContext.startFailed", getName()));
         }
@@ -5307,6 +5304,12 @@ public class StandardContext extends ContainerBase
         // Reinitializing if something went wrong
         if (!ok) {
             setState(LifecycleState.FAILED);
+            // Send j2ee.object.failed notification
+            if (this.getObjectName() != null) {
+                Notification notification = new Notification("j2ee.object.failed",
+                        this.getObjectName(), sequenceNumber.getAndIncrement());
+                broadcaster.sendNotification(notification);
+            }
         } else {
             setState(LifecycleState.STARTING);
         }
@@ -5323,16 +5326,6 @@ public class StandardContext extends ContainerBase
         }
     }
 
-
-    private void setClassLoaderProperty(String name, boolean value) {
-        ClassLoader cl = getLoader().getClassLoader();
-        if (!IntrospectionUtils.setProperty(cl, name, Boolean.toString(value))) {
-            // Failed to set
-            log.info(sm.getString(
-                    "standardContext.webappClassLoader.missingProperty",
-                    name, Boolean.toString(value)));
-        }
-    }
 
     private Map<String, Map<String, String>> buildInjectionMap(NamingResourcesImpl namingResources) {
         Map<String, Map<String, String>> injectionMap = new HashMap<>();
@@ -5388,19 +5381,19 @@ public class StandardContext extends ContainerBase
         Map<String,String> mergedParams = new HashMap<>();
 
         String names[] = findParameters();
-        for (int i = 0; i < names.length; i++) {
-            mergedParams.put(names[i], findParameter(names[i]));
+        for (String s : names) {
+            mergedParams.put(s, findParameter(s));
         }
 
         ApplicationParameter params[] = findApplicationParameters();
-        for (int i = 0; i < params.length; i++) {
-            if (params[i].getOverride()) {
-                if (mergedParams.get(params[i].getName()) == null) {
-                    mergedParams.put(params[i].getName(),
-                            params[i].getValue());
+        for (ApplicationParameter param : params) {
+            if (param.getOverride()) {
+                if (mergedParams.get(param.getName()) == null) {
+                    mergedParams.put(param.getName(),
+                            param.getValue());
                 }
             } else {
-                mergedParams.put(params[i].getName(), params[i].getValue());
+                mergedParams.put(param.getName(), param.getValue());
             }
         }
 
@@ -5458,8 +5451,8 @@ public class StandardContext extends ContainerBase
             // Stop ContainerBackgroundProcessor thread
             threadStop();
 
-            for (int i = 0; i < children.length; i++) {
-                children[i].stop();
+            for (Container child : children) {
+                child.stop();
             }
 
             // Stop our filters
@@ -5477,8 +5470,9 @@ public class StandardContext extends ContainerBase
             setCharsetMapper(null);
 
             // Normal container shutdown processing
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("Processing standard container shutdown");
+            }
 
             // JNDI resources are unbound in CONFIGURE_STOP_EVENT so stop
             // naming resources before they are unbound since NamingResources
@@ -5497,8 +5491,9 @@ public class StandardContext extends ContainerBase
             }
 
             // Clear all application-originated servlet context attributes
-            if (context != null)
+            if (context != null) {
                 context.clearAttributes();
+            }
 
             Realm realm = getRealmInternal();
             if (realm instanceof Lifecycle) {
@@ -5544,12 +5539,14 @@ public class StandardContext extends ContainerBase
         //reset the instance manager
         setInstanceManager(null);
 
-        if (log.isDebugEnabled())
+        if (log.isDebugEnabled()) {
             log.debug("Stopping complete");
+        }
 
     }
 
-    /** Destroy needs to clean up the context completely.
+    /**
+     * Destroy needs to clean up the context completely.
      *
      * The problem is that undoing all the config in start() and restoring
      * a 'fresh' state is impossible. After stop()/destroy()/init()/start()
@@ -5557,9 +5554,6 @@ public class StandardContext extends ContainerBase
      * read modified web.xml, etc. This can only be done by completely
      * removing the context object and remapping a new one, or by cleaning
      * up everything.
-     *
-     * XXX Should this be done in stop() ?
-     *
      */
     @Override
     protected void destroyInternal() throws LifecycleException {
@@ -5599,8 +5593,9 @@ public class StandardContext extends ContainerBase
     @Override
     public void backgroundProcess() {
 
-        if (!getState().isAvailable())
+        if (!getState().isAvailable()) {
             return;
+        }
 
         Loader loader = getLoader();
         if (loader != null) {
@@ -5674,8 +5669,9 @@ public class StandardContext extends ContainerBase
         postConstructMethods.clear();
         preDestroyMethods.clear();
 
-        if(log.isDebugEnabled())
+        if(log.isDebugEnabled()) {
             log.debug("resetContext " + getObjectName());
+        }
     }
 
 
@@ -5692,16 +5688,20 @@ public class StandardContext extends ContainerBase
      */
     protected String adjustURLPattern(String urlPattern) {
 
-        if (urlPattern == null)
-            return (urlPattern);
-        if (urlPattern.startsWith("/") || urlPattern.startsWith("*."))
-            return (urlPattern);
-        if (!isServlet22())
-            return (urlPattern);
-        if(log.isDebugEnabled())
+        if (urlPattern == null) {
+            return urlPattern;
+        }
+        if (urlPattern.startsWith("/") || urlPattern.startsWith("*.")) {
+            return urlPattern;
+        }
+        if (!isServlet22()) {
+            return urlPattern;
+        }
+        if(log.isDebugEnabled()) {
             log.debug(sm.getString("standardContext.urlPattern.patternWarning",
                          urlPattern));
-        return ("/" + urlPattern);
+        }
+        return "/" + urlPattern;
 
     }
 
@@ -5955,9 +5955,7 @@ public class StandardContext extends ContainerBase
      */
     @Override
     public boolean getPaused() {
-
-        return (this.paused);
-
+        return this.paused;
     }
 
 
@@ -5971,13 +5969,14 @@ public class StandardContext extends ContainerBase
             ServletRequestEvent event =
                     new ServletRequestEvent(getServletContext(), request);
 
-            for (int i = 0; i < instances.length; i++) {
-                if (instances[i] == null)
+            for (Object instance : instances) {
+                if (instance == null) {
                     continue;
-                if (!(instances[i] instanceof ServletRequestListener))
+                }
+                if (!(instance instanceof ServletRequestListener)) {
                     continue;
-                ServletRequestListener listener =
-                    (ServletRequestListener) instances[i];
+                }
+                ServletRequestListener listener = (ServletRequestListener) instance;
 
                 try {
                     listener.requestInitialized(event);
@@ -5985,7 +5984,7 @@ public class StandardContext extends ContainerBase
                     ExceptionUtils.handleThrowable(t);
                     getLogger().error(sm.getString(
                             "standardContext.requestListener.requestInit",
-                            instances[i].getClass().getName()), t);
+                            instance.getClass().getName()), t);
                     request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, t);
                     return false;
                 }
@@ -6006,10 +6005,12 @@ public class StandardContext extends ContainerBase
 
             for (int i = 0; i < instances.length; i++) {
                 int j = (instances.length -1) -i;
-                if (instances[j] == null)
+                if (instances[j] == null) {
                     continue;
-                if (!(instances[j] instanceof ServletRequestListener))
+                }
+                if (!(instances[j] instanceof ServletRequestListener)) {
                     continue;
+                }
                 ServletRequestListener listener =
                     (ServletRequestListener) instances[j];
 
@@ -6031,12 +6032,14 @@ public class StandardContext extends ContainerBase
 
     @Override
     public void addPostConstructMethod(String clazz, String method) {
-        if (clazz == null || method == null)
+        if (clazz == null || method == null) {
             throw new IllegalArgumentException(
                     sm.getString("standardContext.postconstruct.required"));
-        if (postConstructMethods.get(clazz) != null)
+        }
+        if (postConstructMethods.get(clazz) != null) {
             throw new IllegalArgumentException(sm.getString(
                     "standardContext.postconstruct.duplicate", clazz));
+        }
 
         postConstructMethods.put(clazz, method);
         fireContainerEvent("addPostConstructMethod", clazz);
@@ -6052,12 +6055,14 @@ public class StandardContext extends ContainerBase
 
     @Override
     public void addPreDestroyMethod(String clazz, String method) {
-        if (clazz == null || method == null)
+        if (clazz == null || method == null) {
             throw new IllegalArgumentException(
                     sm.getString("standardContext.predestroy.required"));
-        if (preDestroyMethods.get(clazz) != null)
+        }
+        if (preDestroyMethods.get(clazz) != null) {
             throw new IllegalArgumentException(sm.getString(
                     "standardContext.predestroy.duplicate", clazz));
+        }
 
         preDestroyMethods.put(clazz, method);
         fireContainerEvent("addPreDestroyMethod", clazz);
@@ -6098,7 +6103,7 @@ public class StandardContext extends ContainerBase
     /**
      * Set the appropriate context attribute for our work directory.
      */
-    private void postWorkDirectory() {
+    protected void postWorkDirectory() {
 
         // Acquire (or calculate) the work directory path
         String workDir = getWorkDir();
@@ -6119,18 +6124,22 @@ public class StandardContext extends ContainerBase
                    engineName = parentEngine.getName();
                 }
             }
-            if ((hostName == null) || (hostName.length() < 1))
+            if ((hostName == null) || (hostName.length() < 1)) {
                 hostName = "_";
-            if ((engineName == null) || (engineName.length() < 1))
+            }
+            if ((engineName == null) || (engineName.length() < 1)) {
                 engineName = "_";
+            }
 
             String temp = getBaseName();
-            if (temp.startsWith("/"))
+            if (temp.startsWith("/")) {
                 temp = temp.substring(1);
+            }
             temp = temp.replace('/', '_');
             temp = temp.replace('\\', '_');
-            if (temp.length() < 1)
+            if (temp.length() < 1) {
                 temp = ContextName.ROOT_NAME;
+            }
             if (hostWorkDir != null ) {
                 workDir = hostWorkDir + File.separator + temp;
             } else {
@@ -6187,8 +6196,9 @@ public class StandardContext extends ContainerBase
      */
     private boolean validateURLPattern(String urlPattern) {
 
-        if (urlPattern == null)
+        if (urlPattern == null) {
             return false;
+        }
         if (urlPattern.indexOf('\n') >= 0 || urlPattern.indexOf('\r') >= 0) {
             return false;
         }
@@ -6199,15 +6209,16 @@ public class StandardContext extends ContainerBase
             if (urlPattern.indexOf('/') < 0) {
                 checkUnusualURLPattern(urlPattern);
                 return true;
-            } else
+            } else {
                 return false;
+            }
         }
-        if ( (urlPattern.startsWith("/")) &&
-                (urlPattern.indexOf("*.") < 0)) {
+        if (urlPattern.startsWith("/") && !urlPattern.contains("*.")) {
             checkUnusualURLPattern(urlPattern);
             return true;
-        } else
+        } else {
             return false;
+        }
 
     }
 
@@ -6284,7 +6295,8 @@ public class StandardContext extends ContainerBase
     }
 
 
-    /* Remove a JMX notificationListener
+    /**
+     * Remove a JMX notificationListener
      * @see javax.management.NotificationEmitter#removeNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
      */
     @Override
@@ -6295,48 +6307,43 @@ public class StandardContext extends ContainerBase
 
     private MBeanNotificationInfo[] notificationInfo;
 
-    /* Get JMX Broadcaster Info
-     * @TODO use StringManager for international support!
-     * @TODO This two events we not send j2ee.state.failed and j2ee.attribute.changed!
+    /**
+     * Get JMX Broadcaster Info
      * @see javax.management.NotificationBroadcaster#getNotificationInfo()
      */
     @Override
     public MBeanNotificationInfo[] getNotificationInfo() {
-        // FIXME: i18n
-        if(notificationInfo == null) {
-            notificationInfo = new MBeanNotificationInfo[]{
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.created"},
-                    Notification.class.getName(),
-                    "web application is created"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.starting"},
-                    Notification.class.getName(),
-                    "change web application is starting"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.running"},
-                    Notification.class.getName(),
-                    "web application is running"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.state.stopping"},
-                    Notification.class.getName(),
-                    "web application start to stopped"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.stopped"},
-                    Notification.class.getName(),
-                    "web application is stopped"
-                    ),
-                    new MBeanNotificationInfo(new String[] {
-                    "j2ee.object.deleted"},
-                    Notification.class.getName(),
-                    "web application is deleted"
-                    )
-            };
-
+        // FIXME: we not send j2ee.attribute.changed
+        if (notificationInfo == null) {
+            notificationInfo = new MBeanNotificationInfo[] {
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.created" },
+                            Notification.class.getName(),
+                            "web application is created"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.starting" },
+                            Notification.class.getName(),
+                            "change web application is starting"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.running" },
+                            Notification.class.getName(),
+                            "web application is running"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.state.stopping" },
+                            Notification.class.getName(),
+                            "web application start to stopped"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.stopped" },
+                            Notification.class.getName(),
+                            "web application is stopped"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.deleted" },
+                            Notification.class.getName(),
+                            "web application is deleted"),
+                    new MBeanNotificationInfo(
+                            new String[] { "j2ee.object.failed" },
+                            Notification.class.getName(),
+                            "web application failed") };
         }
 
         return notificationInfo;
@@ -6462,9 +6469,7 @@ public class StandardContext extends ContainerBase
     }
 
 
-    @SuppressWarnings("deprecation")
-    private static class NoPluggabilityServletContext
-            implements org.apache.catalina.servlet4preview.ServletContext {
+    private static class NoPluggabilityServletContext implements ServletContext {
 
         private final ServletContext sc;
 
@@ -6639,12 +6644,6 @@ public class StandardContext extends ContainerBase
         }
 
         @Override
-        public Dynamic addJspFile(String jspName, String jspFile) {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
         public <T extends Servlet> T createServlet(Class<T> c)
                 throws ServletException {
             throw new UnsupportedOperationException(
@@ -6774,42 +6773,6 @@ public class StandardContext extends ContainerBase
         @Override
         public String getVirtualServerName() {
             return sc.getVirtualServerName();
-        }
-
-        @Override
-        public int getSessionTimeout() {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
-        public void setSessionTimeout(int sessionTimeout) {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
-        public String getRequestCharacterEncoding() {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
-        public void setRequestCharacterEncoding(String encoding) {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
-        public String getResponseCharacterEncoding() {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
-        }
-
-        @Override
-        public void setResponseCharacterEncoding(String encoding) {
-            throw new UnsupportedOperationException(
-                    sm.getString("noPluggabilityServletContext.notAllowed"));
         }
     }
 }

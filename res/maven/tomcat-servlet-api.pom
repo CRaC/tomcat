@@ -15,7 +15,10 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+  http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.apache.tomcat</groupId>
   <artifactId>tomcat-servlet-api</artifactId>
@@ -38,7 +41,6 @@
         javaee_5.xsd,
         javaee_6.xsd,
         javaee_7.xsd,
-        javaee_8.xsd,
         javaee_web_services_1_2.xsd,
         javaee_web_services_client_1_2.xsd,
         javaee_web_services_1_3.xsd,
@@ -53,9 +55,6 @@
         web-app_3_1.xsd,
         web-common_3_1.xsd,
         web-fragment_3_1.xsd,
-        web-app_4_0.xsd,
-        web-common_4_0.xsd and
-        web-fragment_4_0.xsd
         to which the CDDL version 1.0 applies.
       </comments>
     </license>

@@ -27,7 +27,6 @@ import java.util.Set;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.compat.JreVendor;
-import org.apache.tomcat.util.compat.TLS;
 import org.apache.tomcat.util.net.Constants;
 import org.apache.tomcat.util.net.SSLContext;
 import org.apache.tomcat.util.net.SSLHostConfigCertificate;
@@ -74,7 +73,7 @@ public class JSSEUtil extends SSLUtilBase {
             String protocolUpper = protocol.toUpperCase(Locale.ENGLISH);
             if (!"SSLV2HELLO".equals(protocolUpper) && !"SSLV3".equals(protocolUpper)) {
                 if (protocolUpper.contains("SSL")) {
-                    log.debug(sm.getString("jsse.excludeProtocol", protocol));
+                    log.debug(sm.getString("jsseUtil.excludeProtocol", protocol));
                     continue;
                 }
             }
@@ -82,7 +81,7 @@ public class JSSEUtil extends SSLUtilBase {
         }
 
         if (implementedProtocols.size() == 0) {
-            log.warn(sm.getString("jsse.noDefaultProtocols"));
+            log.warn(sm.getString("jsseUtil.noDefaultProtocols"));
         }
 
         String[] implementedCipherSuiteArray = context.getSupportedSSLParameters().getCipherSuites();
@@ -130,12 +129,6 @@ public class JSSEUtil extends SSLUtilBase {
     @Override
     protected Set<String> getImplementedCiphers() {
         return implementedCiphers;
-    }
-
-
-    @Override
-    protected boolean isTls13Available() {
-        return TLS.isTlsv13Available();
     }
 
 
