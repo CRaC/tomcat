@@ -347,4 +347,9 @@ derby.loc=${base-maven.loc}/org/apache/derby/derby/${derby.version}/derby-${derb
 derby-tools.jar=${derby.home}/derby-tools-${derby.version}.jar
 derby-tools.loc=${base-maven.loc}/org/apache/derby/derbytools/${derby.version}/derbytools-${derby.version}.jar
 
-
+# ----- crac -----
+crac.version=0.1.0
+crac.checksum.enabled=false
+crac.home=${base.path}/crac-${crac.version}
+crac.jar=${crac.home}/crac-${crac.version}.jar
+crac.loc=file://${user.home}/.m2/repository/io/github/crac/org-crac/${crac.version}/org-crac-${crac.version}.jar

@@ -33,6 +33,10 @@ import org.apache.catalina.startup.ClassLoaderFactory.RepositoryType;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+import org.crac.Core;
+import org.crac.CheckpointException;
+import org.crac.RestoreException;
+
 /**
  * Bootstrap loader for Catalina.  This application constructs a class loader
  * for use in loading the Catalina internal classes (by accumulating all of the
@@ -357,6 +361,19 @@ public final class Bootstrap {
 
 
     /**
+     * Await the Catalina Daemon.
+     * @throws Exception Fatal await error
+     */
+    public void await()
+        throws Exception {
+
+        Method method = catalinaDaemon.getClass().getMethod("await", (Class [] ) null);
+        method.invoke(catalinaDaemon, (Object [] ) null);
+
+    }
+
+
+    /**
      * Stop the standalone server.
      * @throws Exception Fatal stop error
      */
@@ -485,6 +502,22 @@ public final class Bootstrap {
                     System.exit(1);
                 }
                 System.exit(0);
+            } else if (command.equals("checkpoint")) {
+                daemon.load(args);
+                daemon.start();
+                if (null == daemon.getServer()) {
+                    System.exit(1);
+                }
+                try {
+                    Core.checkpointRestore();
+                } catch (CheckpointException | RestoreException e) {
+                    for (Throwable t : e.getSuppressed()) {
+                        t.printStackTrace();
+                    }
+                    System.exit(1);
+                }
+                daemon.await();
+                daemon.stop();
             } else {
                 log.warn("Bootstrap: command \"" + command + "\" does not exist.");
             }
