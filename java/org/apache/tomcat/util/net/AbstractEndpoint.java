@@ -59,6 +59,10 @@ import org.apache.tomcat.util.threads.TaskQueue;
 import org.apache.tomcat.util.threads.TaskThreadFactory;
 import org.apache.tomcat.util.threads.ThreadPoolExecutor;
 
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
 /**
  * @param <S> The type used by the socket wrapper associated with this endpoint.
  *            May be the same as U.
@@ -68,7 +72,7 @@ import org.apache.tomcat.util.threads.ThreadPoolExecutor;
  * @author Mladen Turk
  * @author Remy Maucherat
  */
-public abstract class AbstractEndpoint<S,U> {
+public abstract class AbstractEndpoint<S,U> implements Resource {
 
     // -------------------------------------------------------------- Constants
 
@@ -1245,6 +1249,10 @@ public abstract class AbstractEndpoint<S,U> {
      * prevent invalid state transitions.
      */
 
+    AbstractEndpoint() {
+        Core.getGlobalContext().register(this);
+    }
+
     public abstract void bind() throws Exception;
     public abstract void unbind() throws Exception;
     public abstract void startInternal() throws Exception;
@@ -1285,6 +1293,23 @@ public abstract class AbstractEndpoint<S,U> {
         }
     }
 
+    @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) throws Exception {
+        stop();
+        if (bindState == BindState.BOUND_ON_INIT) {
+            unbind();
+            bindState = BindState.UNBOUND;
+        }
+    }
+
+    @Override
+    public void afterRestore(Context<? extends Resource> context) throws Exception {
+        if (bindOnInit && bindState == BindState.UNBOUND) {
+            bind();
+            bindState = BindState.BOUND_ON_INIT;
+        }
+        start();
+    }
 
     private void registerJmx(SSLHostConfig sslHostConfig) {
         if (domain == null) {

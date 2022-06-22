@@ -66,6 +66,7 @@
   <path id="tomcat.jdbc.classpath">
     <pathelement location="${tomcat.classes}"/>
     <pathelement location="${tomcat.juli.jar}"/>
+    <pathelement location="${crac.jar}"/>
   </path>
 
   <path id="test.classpath">

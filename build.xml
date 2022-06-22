@@ -222,6 +222,7 @@
     <pathelement location="${jaxrpc-lib.jar}"/>
     <pathelement location="${wsdl4j-lib.jar}"/>
     <pathelement location="${migration-lib.jar}"/>
+    <pathelement location="${crac.jar}"/>
   </path>
 
   <path id="tomcat.classpath">
@@ -1456,6 +1457,7 @@
           description="Default. Builds a working Tomcat instance">
 
     <copy tofile="${tomcat.build}/bin/commons-daemon.jar" file="${commons-daemon.jar}" />
+    <copy tofile="${tomcat.build}/bin/crac.jar" file="${crac.jar}" />
 
     <!-- Copy scripts -->
     <copy todir="${tomcat.build}/bin">
@@ -1578,6 +1580,7 @@
       <property name="tstamp.file" value ="${tstamp.file}" />
       <property name="tomcat.pool" value="${tomcat.pool}" />
       <property name="tomcat.juli.jar" value="${tomcat-juli.jar}" />
+      <property name="crac.jar" value="${crac.jar}" />
       <property name="skip.download" value="set"/>
       <property name="version" value="${version}"/>
       <property name="version.major" value="${version.major}"/>
@@ -1693,6 +1696,7 @@
       failonerror="false"/>
     <copy file="${jdt.jar}" todir="${tomcat.embed}" />
     <copy file="${annotations-api.jar}" todir="${tomcat.embed}" />
+    <copy file="${crac.jar}" todir="${tomcat.embed}" />
 
     <!-- Note the meta-inf below will work as long as there is only one JAR
          that needs to add entries. If there is more than one a more complex
@@ -3344,6 +3348,15 @@ asf.ldap.username=${release.asfusername}
       <param name="checksum.value" value="${migration-lib.checksum.value}"/>
     </antcall>
 
+    <!-- Download crac -->
+    <antcall target="downloadfile">
+      <param name="sourcefile" value="${crac.loc}"/>
+      <param name="destfile" value="${crac.jar}"/>
+      <param name="destdir" value="${crac.home}"/>
+      <param name="checksum.enabled" value="${crac.checksum.enabled}"/>
+      <param name="checksum.algorithm" value="${crac.checksum.algorithm}"/>
+      <param name="checksum.value" value="${crac.checksum.value}"/>
+    </antcall>
   </target>
 
   <target name="download-test-compile"

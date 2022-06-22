@@ -355,6 +355,9 @@ public class Catalina {
             } else if (arg.equals("stop")) {
                 isGenerateCode = false;
                 // NOOP
+            } else if (arg.equals("checkpoint")) {
+                isGenerateCode = false;
+                // NOOP
             } else if (isGenerateCode) {
                 generatedCodeLocationParameter = arg;
                 isGenerateCode = false;

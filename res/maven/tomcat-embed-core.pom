@@ -20,9 +20,10 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
   http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>org.apache.tomcat.embed</groupId>
+  <groupId>io.github.crac.org.apache.tomcat.embed</groupId>
   <artifactId>tomcat-embed-core</artifactId>
   <version>@MAVEN.DEPLOY.VERSION@</version>
+  <name>${project.groupId}:${project.artifactId}</name>
   <description>Core Tomcat implementation</description>
   <url>https://tomcat.apache.org/</url>
   <licenses>
@@ -32,7 +33,25 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
+  <developers>
+    <developer>
+      <id>antonkozlov</id>
+      <name>Anton Kozlov</name>
+      <url>https://github.com/AntonKozlov</url>
+      <email>akozlov@azul.com</email>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:git://github.com/CRaC/tomcat.git</connection>
+    <developerConnection>scm:git:ssh://github.com/CRaC/tomcat.git</developerConnection>
+    <url>github.com/CRaC/tomcat.git/tree/crac</url>
+  </scm>
   <dependencies>
+    <dependency>
+      <groupId>io.github.crac</groupId>
+      <artifactId>org-crac</artifactId>
+      <version>0.1.0</version>
+    </dependency>
     <dependency>
       <groupId>org.apache.tomcat</groupId>
       <artifactId>tomcat-annotations-api</artifactId>

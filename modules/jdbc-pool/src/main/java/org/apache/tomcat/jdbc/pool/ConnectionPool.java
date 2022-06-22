@@ -46,13 +46,17 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
 /**
  * Implementation of simple connection pool.
  * The ConnectionPool uses a {@link PoolProperties} object for storing all the meta information about the connection pool.
  * As the underlying implementation, the connection pool uses {@link java.util.concurrent.BlockingQueue} to store active and idle connections.
  * A custom implementation of a fair {@link FairBlockingQueue} blocking queue is provided with the connection pool itself.
  */
-public class ConnectionPool {
+public class ConnectionPool implements Resource {
 
     /**
      * Default domain for objects registering with an mbean server
@@ -138,6 +142,8 @@ public class ConnectionPool {
     private final AtomicLong removeAbandonedCount = new AtomicLong(0);
     private final AtomicLong releasedIdleCount = new AtomicLong(0);
 
+    private volatile boolean inCheckpoint;
+
     //===============================================================================
     //         PUBLIC METHODS
     //===============================================================================
@@ -151,6 +157,8 @@ public class ConnectionPool {
     public ConnectionPool(PoolConfiguration prop) throws SQLException {
         //setup quick access variables and pools
         init(prop);
+
+        Core.getGlobalContext().register(this);
     }
 
 
@@ -659,6 +667,40 @@ public class ConnectionPool {
         }
     }
 
+    private void handleBorrowOnCheckpoint() throws InterruptedException {
+        if (inCheckpoint) {
+            synchronized(this) {
+                while (inCheckpoint) {
+                    this.wait();
+                }
+            }
+        }
+    }
+
+    private boolean handleReturnOnCheckpoint(PooledConnection con) {
+        if (!inCheckpoint) {
+            return false;
+        }
+        release(con);
+        return true;
+    }
+
+    private boolean handleCleanerOnCheckpoint() {
+        return inCheckpoint;
+    }
+
+    @Override
+    public synchronized void beforeCheckpoint(Context<? extends Resource> context) throws Exception {
+        inCheckpoint = true;
+        checkIdle(true);
+    }
+
+    @Override
+    public synchronized void afterRestore(Context<? extends Resource> context) throws Exception {
+        inCheckpoint = false;
+        this.notifyAll();
+    }
+
     /**
      * Thread safe way to retrieve a connection from the pool
      * @param wait - time to wait, overrides the maxWait from the properties,
@@ -669,6 +711,13 @@ public class ConnectionPool {
      * @throws SQLException Failed to get a connection
      */
     private PooledConnection borrowConnection(int wait, String username, String password) throws SQLException {
+        try {
+            handleBorrowOnCheckpoint();
+        } catch (InterruptedException ie) {
+            SQLException se  = new SQLException(ie.getMessage());
+            se.initCause(ie);
+            throw se;
+        }
 
         if (isClosed()) {
             throw new SQLException("Connection pool closed.");
@@ -998,6 +1047,10 @@ public class ConnectionPool {
      * @param con PooledConnection to be returned to the pool
      */
     protected void returnConnection(PooledConnection con) {
+        if (handleReturnOnCheckpoint(con)) {
+            return;
+        }
+
         if (isClosed()) {
             //if the connection pool is closed
             //close the connection instead of returning it
@@ -1163,6 +1216,7 @@ public class ConnectionPool {
 
 
     protected boolean shouldReleaseIdle(long now, PooledConnection con, long time) {
+        if (inCheckpoint) return true;
         if (con.getConnectionVersion() < getPoolVersion()) {
           return true;
         } else {
@@ -1589,6 +1643,8 @@ public class ConnectionPool {
             ConnectionPool pool = this.pool.get();
             if (pool == null) {
                 stopRunning();
+            } else if (pool.handleCleanerOnCheckpoint()) {
+                // do nothing
             } else if (!pool.isClosed()) {
                 try {
                     if (pool.getPoolProperties().isRemoveAbandoned()

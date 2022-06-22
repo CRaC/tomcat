@@ -48,6 +48,10 @@ import java.util.logging.LogManager;
 import java.util.logging.LogRecord;
 import java.util.regex.Pattern;
 
+import org.crac.Context;
+import org.crac.Core;
+import org.crac.Resource;
+
 /**
  * Implementation of <b>Handler</b> that appends log messages to a file named {prefix}{date}{suffix} in a configured
  * directory.
@@ -80,7 +84,7 @@ import java.util.regex.Pattern;
  * specified maximum days. Default value: <code>-1</code>.</li>
  * </ul>
  */
-public class FileHandler extends Handler {
+public class FileHandler extends Handler implements Resource {
 
 
     public static final int DEFAULT_MAX_DAYS = -1;
@@ -118,6 +122,7 @@ public class FileHandler extends Handler {
         this.bufferSize = bufferSize;
         configure();
         clean();
+        Core.getGlobalContext().register(this);
     }
 
 
@@ -257,6 +262,15 @@ public class FileHandler extends Handler {
         }
     }
 
+    @Override
+    public void beforeCheckpoint(Context<? extends Resource> context) {
+        close();
+    }
+
+    @Override
+    public void afterRestore(Context<? extends Resource> context) {
+        open();
+    }
 
     // -------------------------------------------------------- Private Methods
 
